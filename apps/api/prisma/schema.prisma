@@ -38,6 +38,46 @@ model Scene {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  placedObjects PlacedObject[]
 
   @@index([projectId])
+}
+
+model ObjectDefinition {
+  id               String   @id @default(cuid())
+  code             String   @unique
+  name             String
+  category         String
+  tags             String[]
+  modelAssetId     String?
+  thumbnailAssetId String?
+  defaultSize      Json?
+  pivot            String?
+  allowedRotations Int[]
+  sockets          Json?
+  placementRules   Json?
+  scalable         Json?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  placedObjects    PlacedObject[]
+
+  @@index([category])
+}
+
+model PlacedObject {
+  id                 String           @id @default(cuid())
+  sceneId            String
+  objectDefinitionId String
+  name               String?
+  position           Json
+  rotationY          Float            @default(0)
+  scale              Json
+  params             Json?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  scene              Scene            @relation(fields: [sceneId], references: [id], onDelete: Cascade)
+  objectDefinition   ObjectDefinition @relation(fields: [objectDefinitionId], references: [id], onDelete: Restrict)
+
+  @@index([sceneId])
+  @@index([objectDefinitionId])
 }

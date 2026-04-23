@@ -4,8 +4,18 @@ import { ProjectsModule } from './projects/projects.module';
 import { ScenesModule } from './scenes/scenes.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { AssetsModule } from './assets/assets.module';
+import { ObjectDefinitionsModule } from './object-definitions/object-definitions.module';
+import { PlacedObjectsModule } from './placed-objects/placed-objects.module';
 
 @Module({
-  imports: [PrismaModule, AuthModule, ProjectsModule, ScenesModule, AssetsModule]
+  imports: [
+    PrismaModule,
+    AuthModule,
+    ProjectsModule,
+    ScenesModule,
+    AssetsModule,
+    ObjectDefinitionsModule,
+    PlacedObjectsModule
+  ]
 })
 export class AppModule {}
