@@ -26,10 +26,8 @@ type SceneCommandLog = {
   expectedVersion: number;
   status: string;
   createdAt: string;
-  result?: {
-    error?: string;
-    statusCode?: number;
-  };
+  payload?: unknown;
+  result?: Record<string, unknown> | null;
 };
 
 export default function ProjectScenesPage() {
@@ -47,6 +45,24 @@ export default function ProjectScenesPage() {
   const [sceneView, setSceneView] = useState<'active' | 'archived'>('active');
   const [logStatusFilter, setLogStatusFilter] = useState<'all' | 'succeeded' | 'failed'>('all');
   const [logActionFilter, setLogActionFilter] = useState<'all' | 'rename' | 'archive' | 'restore'>('all');
+
+  function formatDateTime(value: string) {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return value;
+    }
+    return date.toLocaleString('ko-KR', { hour12: false });
+  }
+
+  function getResultError(log: SceneCommandLog): string | null {
+    const value = log.result?.error;
+    return typeof value === 'string' && value.length > 0 ? value : null;
+  }
+
+  function getResultStatusCode(log: SceneCommandLog): number | null {
+    const value = log.result?.statusCode;
+    return typeof value === 'number' ? value : null;
+  }
 
   const loadScenes = useCallback(async () => {
     if (!projectId) {
@@ -333,24 +349,62 @@ export default function ProjectScenesPage() {
               <div className="project-list">
                 {commandLogs.map((log) => (
                   <article key={log.id} className="project-item">
+                    {(() => {
+                      const resultError = getResultError(log);
+                      const resultStatusCode = getResultStatusCode(log);
+
+                      return (
+                        <>
                     <strong>{log.action}</strong>
                     <p className="subtle" style={{ margin: '6px 0 0' }}>
+                      commandId: {log.commandId}
+                      <br />
+                      at: {formatDateTime(log.createdAt)}
+                      <br />
                       expectedVersion: {log.expectedVersion}
                       <br />
                       status: {log.status}
-                      {log.status === 'failed' && log.result?.error ? (
+                      {log.status === 'failed' && resultError ? (
                         <>
                           <br />
-                          error: {log.result.error}
-                          {typeof log.result.statusCode === 'number' ? (
+                          error: {resultError}
+                          {typeof resultStatusCode === 'number' ? (
                             <>
                               <br />
-                              statusCode: {log.result.statusCode}
+                              statusCode: {resultStatusCode}
                             </>
                           ) : null}
                         </>
                       ) : null}
                     </p>
+                    <details style={{ marginTop: 8 }}>
+                      <summary className="subtle" style={{ cursor: 'pointer' }}>
+                        디버그 데이터 보기
+                      </summary>
+                      <pre
+                        style={{
+                          marginTop: 8,
+                          padding: 10,
+                          borderRadius: 10,
+                          background: '#f3f5f4',
+                          overflowX: 'auto',
+                          fontSize: 12,
+                          lineHeight: 1.4
+                        }}
+                      >
+                        {JSON.stringify(
+                          {
+                            payload: log.payload ?? null,
+                            result: log.result ?? null
+                          },
+                          null,
+                          2
+                        )}
+                      </pre>
+                    </details>
+                        </>
+                      );
+                    })()}
                   </article>
                 ))}
               </div>
