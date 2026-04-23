@@ -73,3 +73,26 @@ Sprint 4 품질게이트는 아래 4단계를 고정 순서로 수행합니다.
 
 GitHub Actions 워크플로 파일:
 - .github/workflows/quality-gate.yml
+
+## 7. 완료 정의 1번 스모크 검증
+아래 명령은 완료 정의 1번 흐름을 자동 검증합니다.
+
+- 로그인 -> 프로젝트 생성 -> 씬 생성 -> 배치
+- arrange 실행 -> generate 실행 -> export job 생성
+- export 완료 polling -> GLB 다운로드
+
+실행:
+- pnpm run smoke:flow
+
+기본 API 주소:
+- SNAPSPACE_API_BASE_URL=http://localhost:8080/api/v1
+
+선택 환경 변수:
+- SNAPSPACE_SMOKE_EMAIL
+- SNAPSPACE_SMOKE_NAME
+- SNAPSPACE_SMOKE_EXPORT_TIMEOUT_MS
+- SNAPSPACE_SMOKE_POLL_MS
+- SNAPSPACE_SMOKE_OUTPUT_DIR
+
+결과 GLB 파일은 기본적으로 아래에 저장됩니다.
+- .tmp/smoke
