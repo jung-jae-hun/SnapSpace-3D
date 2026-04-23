@@ -20,12 +20,21 @@
 상세 내용은 아래 문서를 참고하세요.
 - Doc/external-lib-install-guide.md
 
-## 3. 로컬 Docker 개발 실행
-1) 환경값 준비
-- cp .env.example .env
+## 3. 로컬 Docker 개발 실행 (고정 실행 폴더)
+Docker 실행 기준 폴더는 아래 경로를 사용합니다.
+- /Volumes/MartinData/SERVER/SnapSpace-3D
+
+1) Docker Home 초기화
+- bash scripts/docker-home-init.sh
 
 2) 개발 컨테이너 실행
-- docker compose -f infra/compose/docker-compose.dev.yml up --build
+- bash scripts/docker-home-up.sh
+
+3) 개발 컨테이너 중지
+- bash scripts/docker-home-down.sh
+
+상세 정책은 아래 문서를 참고하세요.
+- Doc/docker-home-policy.md
 
 ## 4. 순차 개발 체크리스트
 - Doc/sequential-development-checklist.md

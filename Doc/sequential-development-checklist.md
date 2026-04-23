@@ -5,6 +5,8 @@
 2. apps/web, apps/api, apps/worker 분리
 3. packages/shared-types, packages/scene-engine 공통화
 4. Docker compose 기반 로컬 통합 실행
+5. Docker Home 고정 경로 사용: `/Volumes/MartinData/SERVER/SnapSpace-3D`
+6. Docker 실행은 `scripts/docker-home-*.sh` 스크립트로만 수행
 
 ## 2. Sprint 1 (환경/백엔드 최소 기능)
 1. Prisma 스키마 초기화

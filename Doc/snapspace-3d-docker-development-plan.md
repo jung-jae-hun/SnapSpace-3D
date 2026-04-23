@@ -57,6 +57,14 @@
 2. stage: production-like 이미지, 축소 리소스
 3. prod: immutable image, read-only rootfs(가능 범위), 최소 권한 실행
 
+## 3.4 Docker 실행 기준 경로 정책
+1. Docker Home 경로는 `/Volumes/MartinData/SERVER/SnapSpace-3D`로 고정
+2. Docker 관련 실행은 Docker Home 기준 스크립트로만 수행
+3. 실행 스크립트:
+  - `bash scripts/docker-home-init.sh`
+  - `bash scripts/docker-home-up.sh`
+  - `bash scripts/docker-home-down.sh`
+
 ---
 
 ## 4. 권장 모노레포 구조
