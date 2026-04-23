@@ -1,4 +1,4 @@
-import { NotFoundException } from '@nestjs/common';
+import { ConflictException, NotFoundException } from '@nestjs/common';
 import { ScenesService } from './scenes.service';
 
 type MockPrisma = {
@@ -9,6 +9,11 @@ type MockPrisma = {
     create: jest.Mock;
     findMany: jest.Mock;
     findFirst: jest.Mock;
+    update: jest.Mock;
+  };
+  sceneCommand: {
+    findUnique: jest.Mock;
+    create: jest.Mock;
   };
 };
 
@@ -24,7 +29,24 @@ describe('ScenesService', () => {
       scene: {
         create: jest.fn().mockImplementation(async ({ data }) => ({ id: 's-1', ...data })),
         findMany: jest.fn().mockResolvedValue([{ id: 's-1', projectId: 'p-1' }]),
-        findFirst: jest.fn().mockResolvedValue({ id: 's-1', projectId: 'p-1' })
+        findFirst: jest.fn().mockResolvedValue({
+          id: 's-1',
+          projectId: 'p-1',
+          name: 'Scene A',
+          version: 1,
+          archivedAt: null
+        }),
+        update: jest.fn().mockImplementation(async ({ where, data }) => ({
+          id: where.id,
+          name: data.name ?? 'Scene A',
+          version:
+            typeof data.version === 'object' && data.version.increment ? 2 : 1,
+          archivedAt: data.archivedAt ?? null
+        }))
+      },
+      sceneCommand: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: 'cmd-log-1' })
       }
     };
 
@@ -62,7 +84,7 @@ describe('ScenesService', () => {
       where: { id: 'p-1', userId: 'u-1' }
     });
     expect(prisma.scene.findMany).toHaveBeenCalledWith({
-      where: { projectId: 'p-1' },
+      where: { projectId: 'p-1', archivedAt: null },
       orderBy: { createdAt: 'desc' }
     });
   });
@@ -71,5 +93,46 @@ describe('ScenesService', () => {
     prisma.scene.findFirst.mockResolvedValueOnce(null);
 
     await expect(service.findOne('u-1', 's-foreign')).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('executeCommand(rename)는 버전을 증가시키고 커맨드 로그를 저장한다', async () => {
+    const result = await service.executeCommand('u-1', 's-1', {
+      commandId: 'cmd-1',
+      action: 'rename',
+      expectedVersion: 1,
+      payload: { name: 'Scene A v2' }
+    });
+
+    expect(prisma.scene.update).toHaveBeenCalled();
+    expect(prisma.sceneCommand.create).toHaveBeenCalled();
+    expect(result.idempotent).toBe(false);
+    expect((result.result as { version: number }).version).toBe(2);
+  });
+
+  it('executeCommand는 동일 commandId 재요청 시 idempotent 응답을 반환한다', async () => {
+    prisma.sceneCommand.findUnique.mockResolvedValueOnce({
+      action: 'rename',
+      result: { sceneId: 's-1', version: 2 }
+    });
+
+    const result = await service.executeCommand('u-1', 's-1', {
+      commandId: 'cmd-1',
+      action: 'rename',
+      expectedVersion: 1,
+      payload: { name: 'Scene A v2' }
+    });
+
+    expect(result.idempotent).toBe(true);
+    expect(prisma.scene.update).not.toHaveBeenCalled();
+  });
+
+  it('executeCommand는 expectedVersion 불일치 시 ConflictException을 던진다', async () => {
+    await expect(
+      service.executeCommand('u-1', 's-1', {
+        commandId: 'cmd-2',
+        action: 'archive',
+        expectedVersion: 99
+      })
+    ).rejects.toBeInstanceOf(ConflictException);
   });
 });

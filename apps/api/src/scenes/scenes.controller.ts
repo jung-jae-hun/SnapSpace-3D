@@ -3,6 +3,7 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { JwtPayload } from '../auth/jwt-payload.type';
 import { CreateSceneDto } from './dto/create-scene.dto';
+import { SceneCommandDto } from './dto/scene-command.dto';
 import { ScenesService } from './scenes.service';
 
 type AuthenticatedRequest = {
@@ -38,5 +39,15 @@ export class ScenesController {
   @ApiOperation({ summary: '씬 단건 조회' })
   findOne(@Req() req: AuthenticatedRequest, @Param('sceneId') sceneId: string) {
     return this.scenesService.findOne(req.user.sub, sceneId);
+  }
+
+  @Post('scenes/:sceneId/commands')
+  @ApiOperation({ summary: '씬 변경 커맨드 실행(rename/archive/restore)' })
+  executeCommand(
+    @Req() req: AuthenticatedRequest,
+    @Param('sceneId') sceneId: string,
+    @Body() dto: SceneCommandDto
+  ) {
+    return this.scenesService.executeCommand(req.user.sub, sceneId, dto);
   }
 }

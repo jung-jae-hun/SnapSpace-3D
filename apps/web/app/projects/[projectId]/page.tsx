@@ -8,6 +8,7 @@ type Scene = {
   id: string;
   name: string;
   version: number;
+  archivedAt?: string | null;
   createdAt?: string;
 };
 
@@ -105,6 +106,54 @@ export default function ProjectScenesPage() {
     setMessage(`씬 상세 조회 완료: ${detail.name}`);
   }
 
+  async function handleRenameScene(scene: Scene) {
+    const nextName = window.prompt('새 씬 이름을 입력하세요.', scene.name)?.trim();
+    if (!nextName) {
+      return;
+    }
+
+    const response = await fetch(`/api/scenes/${scene.id}/commands`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        commandId: crypto.randomUUID(),
+        action: 'rename',
+        expectedVersion: scene.version,
+        payload: { name: nextName }
+      })
+    });
+
+    if (!response.ok) {
+      const error = (await response.json().catch(() => ({}))) as { message?: string };
+      setMessage(error.message ?? '씬 이름 변경 실패');
+      return;
+    }
+
+    setMessage('씬 이름 변경 완료');
+    await loadScenes();
+  }
+
+  async function handleArchiveScene(scene: Scene) {
+    const response = await fetch(`/api/scenes/${scene.id}/commands`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        commandId: crypto.randomUUID(),
+        action: 'archive',
+        expectedVersion: scene.version
+      })
+    });
+
+    if (!response.ok) {
+      const error = (await response.json().catch(() => ({}))) as { message?: string };
+      setMessage(error.message ?? '씬 아카이브 실패');
+      return;
+    }
+
+    setMessage('씬 아카이브 완료');
+    await loadScenes();
+  }
+
   return (
     <main>
       <section className="panel" style={{ padding: 22, marginBottom: 16 }}>
@@ -198,9 +247,17 @@ export default function ProjectScenesPage() {
                       version {scene.version}
                     </p>
                   </div>
-                  <button className="btn btn-primary" onClick={() => void handleSelectScene(scene.id)}>
-                    상세 조회
-                  </button>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button className="btn btn-ghost" onClick={() => void handleRenameScene(scene)}>
+                      이름 변경
+                    </button>
+                    <button className="btn btn-ghost" onClick={() => void handleArchiveScene(scene)}>
+                      아카이브
+                    </button>
+                    <button className="btn btn-primary" onClick={() => void handleSelectScene(scene.id)}>
+                      상세 조회
+                    </button>
+                  </div>
                 </div>
               </article>
             ))
