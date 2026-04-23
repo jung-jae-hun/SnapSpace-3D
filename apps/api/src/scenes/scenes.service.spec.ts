@@ -89,6 +89,15 @@ describe('ScenesService', () => {
     });
   });
 
+  it('findByProject는 includeArchived=true면 아카이브를 포함해서 조회한다', async () => {
+    await service.findByProject('u-1', 'p-1', { includeArchived: true });
+
+    expect(prisma.scene.findMany).toHaveBeenCalledWith({
+      where: { projectId: 'p-1' },
+      orderBy: { createdAt: 'desc' }
+    });
+  });
+
   it('findOne은 소유한 scene이 아니면 NotFoundException을 던진다', async () => {
     prisma.scene.findFirst.mockResolvedValueOnce(null);
 

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { JwtPayload } from '../auth/jwt-payload.type';
@@ -30,9 +30,13 @@ export class ScenesController {
   @ApiOperation({ summary: '프로젝트 하위 씬 목록' })
   findByProject(
     @Req() req: AuthenticatedRequest,
-    @Param('projectId') projectId: string
+    @Param('projectId') projectId: string,
+    @Query('includeArchived') includeArchived?: string
   ) {
-    return this.scenesService.findByProject(req.user.sub, projectId);
+    const shouldIncludeArchived = includeArchived === 'true' || includeArchived === '1';
+    return this.scenesService.findByProject(req.user.sub, projectId, {
+      includeArchived: shouldIncludeArchived
+    });
   }
 
   @Get('scenes/:sceneId')

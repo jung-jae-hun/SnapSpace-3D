@@ -18,8 +18,10 @@ export async function GET(_request: NextRequest, context: RouteContext) {
   }
 
   const { projectId } = await context.params;
+  const includeArchived = _request.nextUrl.searchParams.get('includeArchived');
+  const query = includeArchived ? `?includeArchived=${encodeURIComponent(includeArchived)}` : '';
 
-  const response = await fetch(backendUrl(`/projects/${projectId}/scenes`), {
+  const response = await fetch(backendUrl(`/projects/${projectId}/scenes${query}`), {
     headers: {
       Authorization: `Bearer ${accessToken}`
     },

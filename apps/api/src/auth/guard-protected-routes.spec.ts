@@ -79,6 +79,8 @@ describe('Guard-protected routes', () => {
       .set('Authorization', 'Bearer valid-token')
       .expect(200);
 
-    expect(scenesServiceMock.findByProject).toHaveBeenCalledWith('u-1', 'p-1');
+    expect(scenesServiceMock.findByProject).toHaveBeenCalledWith('u-1', 'p-1', {
+      includeArchived: false
+    });
   });
 });

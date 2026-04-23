@@ -30,6 +30,7 @@ export default function ProjectScenesPage() {
   const [selectedScene, setSelectedScene] = useState<SceneDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
+  const [sceneView, setSceneView] = useState<'active' | 'archived'>('active');
 
   const loadScenes = useCallback(async () => {
     if (!projectId) {
@@ -38,7 +39,8 @@ export default function ProjectScenesPage() {
 
     setLoading(true);
     try {
-      const response = await fetch(`/api/projects/${projectId}/scenes`, {
+      const includeArchived = sceneView === 'archived' ? '1' : '0';
+      const response = await fetch(`/api/projects/${projectId}/scenes?includeArchived=${includeArchived}`, {
         cache: 'no-store'
       });
 
@@ -49,11 +51,15 @@ export default function ProjectScenesPage() {
       }
 
       const items = (await response.json()) as Scene[];
-      setScenes(items);
+      const filtered =
+        sceneView === 'archived'
+          ? items.filter((item) => Boolean(item.archivedAt))
+          : items.filter((item) => !item.archivedAt);
+      setScenes(filtered);
     } finally {
       setLoading(false);
     }
-  }, [projectId]);
+  }, [projectId, sceneView]);
 
   useEffect(() => {
     void loadScenes();
@@ -154,6 +160,27 @@ export default function ProjectScenesPage() {
     await loadScenes();
   }
 
+  async function handleRestoreScene(scene: Scene) {
+    const response = await fetch(`/api/scenes/${scene.id}/commands`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        commandId: crypto.randomUUID(),
+        action: 'restore',
+        expectedVersion: scene.version
+      })
+    });
+
+    if (!response.ok) {
+      const error = (await response.json().catch(() => ({}))) as { message?: string };
+      setMessage(error.message ?? '씬 복원 실패');
+      return;
+    }
+
+    setMessage('씬 복원 완료');
+    await loadScenes();
+  }
+
   return (
     <main>
       <section className="panel" style={{ padding: 22, marginBottom: 16 }}>
@@ -228,14 +255,36 @@ export default function ProjectScenesPage() {
       <section className="panel" style={{ padding: 18, marginTop: 16 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h2 style={{ margin: 0 }}>씬 목록</h2>
-          <button className="btn btn-ghost" onClick={() => void loadScenes()}>
-            새로고침
-          </button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              className="btn btn-ghost"
+              onClick={() => setSceneView('active')}
+              style={{
+                backgroundColor: sceneView === 'active' ? '#dff2e8' : undefined
+              }}
+            >
+              활성
+            </button>
+            <button
+              className="btn btn-ghost"
+              onClick={() => setSceneView('archived')}
+              style={{
+                backgroundColor: sceneView === 'archived' ? '#ffe9d6' : undefined
+              }}
+            >
+              아카이브
+            </button>
+            <button className="btn btn-ghost" onClick={() => void loadScenes()}>
+              새로고침
+            </button>
+          </div>
         </div>
         <div className="project-list" style={{ marginTop: 14 }}>
           {scenes.length === 0 ? (
             <p className="subtle" style={{ margin: 0 }}>
-              씬이 없습니다. 첫 씬을 생성해보세요.
+              {sceneView === 'active'
+                ? '씬이 없습니다. 첫 씬을 생성해보세요.'
+                : '아카이브된 씬이 없습니다.'}
             </p>
           ) : (
             scenes.map((scene) => (
@@ -248,12 +297,20 @@ export default function ProjectScenesPage() {
                     </p>
                   </div>
                   <div style={{ display: 'flex', gap: 8 }}>
-                    <button className="btn btn-ghost" onClick={() => void handleRenameScene(scene)}>
-                      이름 변경
-                    </button>
-                    <button className="btn btn-ghost" onClick={() => void handleArchiveScene(scene)}>
-                      아카이브
-                    </button>
+                    {!scene.archivedAt ? (
+                      <>
+                        <button className="btn btn-ghost" onClick={() => void handleRenameScene(scene)}>
+                          이름 변경
+                        </button>
+                        <button className="btn btn-ghost" onClick={() => void handleArchiveScene(scene)}>
+                          아카이브
+                        </button>
+                      </>
+                    ) : (
+                      <button className="btn btn-ghost" onClick={() => void handleRestoreScene(scene)}>
+                        복원
+                      </button>
+                    )}
                     <button className="btn btn-primary" onClick={() => void handleSelectScene(scene.id)}>
                       상세 조회
                     </button>

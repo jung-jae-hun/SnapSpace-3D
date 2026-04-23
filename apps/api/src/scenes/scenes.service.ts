@@ -35,11 +35,17 @@ export class ScenesService {
     });
   }
 
-  async findByProject(userId: string, projectId: string) {
+  async findByProject(
+    userId: string,
+    projectId: string,
+    options?: { includeArchived?: boolean }
+  ) {
     await this.ensureOwnedProject(userId, projectId);
 
+    const includeArchived = options?.includeArchived ?? false;
+
     return this.prisma.scene.findMany({
-      where: { projectId, archivedAt: null },
+      where: includeArchived ? { projectId } : { projectId, archivedAt: null },
       orderBy: { createdAt: 'desc' }
     });
   }
