@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 
 type UserInfo = {
@@ -233,6 +234,15 @@ export default function HomePage() {
                 <p className="subtle" style={{ margin: '6px 0 0' }}>
                   {project.description || '설명 없음'}
                 </p>
+                <div style={{ marginTop: 10 }}>
+                  <Link
+                    href={`/projects/${project.id}`}
+                    className="btn btn-ghost"
+                    style={{ display: 'inline-block' }}
+                  >
+                    씬 관리로 이동
+                  </Link>
+                </div>
               </article>
             ))
           )}
