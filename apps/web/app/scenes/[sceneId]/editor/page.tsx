@@ -1,5 +1,7 @@
 'use client';
 
+import { OrbitControls } from '@react-three/drei';
+import { Canvas } from '@react-three/fiber';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -20,12 +22,22 @@ type PlacedObject = {
   scale: { x: number; y: number; z: number };
 };
 
+type GeneratedObject = {
+  id: string;
+  sourcePlacedObjectId: string;
+  meshType: string;
+  position: { x: number; y: number; z: number };
+  rotation: { x: number; y: number; z: number };
+  scale: { x: number; y: number; z: number };
+};
+
 export default function SceneEditorPage() {
   const params = useParams<{ sceneId: string }>();
   const sceneId = params.sceneId;
 
   const [catalog, setCatalog] = useState<ObjectDefinition[]>([]);
   const [placements, setPlacements] = useState<PlacedObject[]>([]);
+  const [generated, setGenerated] = useState<GeneratedObject[]>([]);
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const [status, setStatus] = useState('초기화 중...');
   const [saving, setSaving] = useState(false);
@@ -50,18 +62,20 @@ export default function SceneEditorPage() {
   async function loadInitial() {
     setStatus('카탈로그/씬 로드 중...');
 
-    const [catalogRes, placementsRes] = await Promise.all([
+    const [catalogRes, placementsRes, generatedRes] = await Promise.all([
       fetch('/api/object-definitions', { cache: 'no-store' }),
-      fetch(`/api/scenes/${sceneId}/placed-objects`, { cache: 'no-store' })
+      fetch(`/api/scenes/${sceneId}/placed-objects`, { cache: 'no-store' }),
+      fetch(`/api/scenes/${sceneId}/generated-objects`, { cache: 'no-store' })
     ]);
 
-    if (!catalogRes.ok || !placementsRes.ok) {
+    if (!catalogRes.ok || !placementsRes.ok || !generatedRes.ok) {
       setStatus('로드 실패: 인증 또는 서버 상태를 확인하세요.');
       return;
     }
 
     const catalogData = (await catalogRes.json()) as ObjectDefinition[];
     const placementData = (await placementsRes.json()) as PlacedObject[];
+    const generatedData = (await generatedRes.json()) as GeneratedObject[];
 
     setCatalog(catalogData);
     setPlacements(
@@ -82,6 +96,7 @@ export default function SceneEditorPage() {
         }
       }))
     );
+    setGenerated(generatedData);
 
     setStatus('로드 완료');
   }
@@ -117,6 +132,22 @@ export default function SceneEditorPage() {
 
     await loadInitial();
     setStatus(`arrange 완료: ${action}`);
+  }
+
+  async function runGenerate() {
+    setStatus('generate 실행 중...');
+
+    const response = await fetch(`/api/scenes/${sceneId}/generate`, {
+      method: 'POST'
+    });
+
+    if (!response.ok) {
+      setStatus('generate 실패');
+      return;
+    }
+
+    await loadInitial();
+    setStatus('generate 완료');
   }
 
   async function saveScene(nextPlacements: PlacedObject[]) {
@@ -335,7 +366,50 @@ export default function SceneEditorPage() {
               <button className="btn btn-ghost" onClick={() => void runArrange('snap-grid')}>
                 Snap Grid
               </button>
+              <button className="btn btn-primary" onClick={() => void runGenerate()}>
+                Generate
+              </button>
             </div>
+          </div>
+
+          <div className="card" style={{ marginTop: 14 }}>
+            <p style={{ margin: 0, fontWeight: 700 }}>3D Preview (초기)</p>
+            <p className="subtle" style={{ marginTop: 6 }}>
+              generated 객체 기준으로 간단한 box mesh를 렌더링합니다.
+            </p>
+            <div
+              style={{
+                width: '100%',
+                height: 320,
+                borderRadius: 12,
+                overflow: 'hidden',
+                border: '1px solid #d8d5cb',
+                background: 'linear-gradient(180deg, #f3f8ff 0%, #f9fff8 100%)'
+              }}
+            >
+              <Canvas camera={{ position: [8, 8, 8], fov: 50 }}>
+                <color attach="background" args={['#f8fcff']} />
+                <ambientLight intensity={0.6} />
+                <directionalLight position={[8, 12, 6]} intensity={1} />
+                <gridHelper args={[20, 20, '#b8c3cc', '#d8e1e8']} />
+
+                {generated.map((obj) => (
+                  <mesh
+                    key={obj.id}
+                    position={[obj.position.x, obj.position.y + obj.scale.y / 2, obj.position.z]}
+                    rotation={[obj.rotation.x, obj.rotation.y, obj.rotation.z]}
+                  >
+                    <boxGeometry args={[obj.scale.x, obj.scale.y, obj.scale.z]} />
+                    <meshStandardMaterial color="#1f8a70" metalness={0.15} roughness={0.7} />
+                  </mesh>
+                ))}
+
+                <OrbitControls makeDefault />
+              </Canvas>
+            </div>
+            <p className="subtle" style={{ margin: '8px 0 0' }}>
+              generated count: {generated.length}
+            </p>
           </div>
         </div>
       </section>

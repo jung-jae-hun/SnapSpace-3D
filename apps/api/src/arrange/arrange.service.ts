@@ -10,6 +10,17 @@ type ArrangedObject = {
   position: Vec3;
 };
 
+type GeneratedObject = {
+  id: string;
+  sourcePlacedObjectId: string;
+  meshType: string;
+  assetId?: string;
+  position: Vec3;
+  rotation: Vec3;
+  scale: Vec3;
+  metadata?: Record<string, unknown>;
+};
+
 @Injectable()
 export class ArrangeService {
   constructor(private readonly prisma: PrismaService) {}
@@ -62,6 +73,66 @@ export class ArrangeService {
       sceneId,
       updatedCount: arranged.length
     };
+  }
+
+  async generate(userId: string, sceneId: string) {
+    await this.findOwnedScene(userId, sceneId);
+
+    const generated = await this.listGeneratedObjects(userId, sceneId);
+
+    return {
+      sceneId,
+      generatedCount: generated.length,
+      generatedObjects: generated
+    };
+  }
+
+  async listGeneratedObjects(userId: string, sceneId: string) {
+    await this.findOwnedScene(userId, sceneId);
+
+    const placed = await this.prisma.placedObject.findMany({
+      where: { sceneId },
+      include: {
+        objectDefinition: {
+          select: {
+            code: true,
+            category: true,
+            modelAssetId: true
+          }
+        }
+      },
+      orderBy: { createdAt: 'asc' }
+    });
+
+    return placed.map<GeneratedObject>((item) => ({
+      id: `gen-${item.id}`,
+      sourcePlacedObjectId: item.id,
+      meshType: item.objectDefinition.code || item.objectDefinition.category || 'object',
+      assetId: item.objectDefinition.modelAssetId ?? undefined,
+      position: this.parsePosition(item.position),
+      rotation: { x: 0, y: Number(item.rotationY ?? 0), z: 0 },
+      scale: this.parseScale(item.scale),
+      metadata: {
+        category: item.objectDefinition.category,
+        objectDefinitionId: item.objectDefinitionId,
+        name: item.name ?? null
+      }
+    }));
+  }
+
+  private async findOwnedScene(userId: string, sceneId: string) {
+    const scene = await this.prisma.scene.findFirst({
+      where: {
+        id: sceneId,
+        project: { userId }
+      }
+    });
+
+    if (!scene) {
+      throw new NotFoundException('Scene not found');
+    }
+
+    return scene;
   }
 
   private applyArrange(items: ArrangedObject[], dto: ArrangeSceneDto): ArrangedObject[] {
@@ -122,6 +193,16 @@ export class ArrangeService {
       x: Number(input.x ?? 0),
       y: Number(input.y ?? 0),
       z: Number(input.z ?? 0)
+    };
+  }
+
+  private parseScale(value: unknown): Vec3 {
+    const input = typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {};
+
+    return {
+      x: Number(input.x ?? 1),
+      y: Number(input.y ?? 1),
+      z: Number(input.z ?? 1)
     };
   }
 }
