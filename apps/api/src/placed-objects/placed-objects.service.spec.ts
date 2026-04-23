@@ -1,4 +1,4 @@
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { PlacedObjectsService } from './placed-objects.service';
 
 type MockPrisma = {
@@ -85,6 +85,19 @@ describe('PlacedObjectsService.bulkUpsert', () => {
       })
     ).rejects.toBeInstanceOf(NotFoundException);
 
+    expect(prisma.placedObject.upsert).not.toHaveBeenCalled();
+    expect(prisma.placedObject.create).not.toHaveBeenCalled();
+  });
+
+  it('upsert 모드에서 요청 내 id가 중복되면 BadRequestException을 던진다', async () => {
+    await expect(
+      service.bulkUpsert('scene-1', {
+        mode: 'upsert',
+        items: [makeItem('dup-id'), makeItem('dup-id')]
+      })
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(prisma.placedObject.findMany).not.toHaveBeenCalled();
     expect(prisma.placedObject.upsert).not.toHaveBeenCalled();
     expect(prisma.placedObject.create).not.toHaveBeenCalled();
   });

@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { BulkUpsertPlacedObjectsDto } from './dto/bulk-upsert-placed-objects.dto';
@@ -119,6 +119,13 @@ export class PlacedObjectsService {
     const requestedIds = dto.items
       .map((item) => item.id)
       .filter((id): id is string => Boolean(id));
+
+    if (requestedIds.length > 0) {
+      const uniqueIds = new Set(requestedIds);
+      if (uniqueIds.size !== requestedIds.length) {
+        throw new BadRequestException('Duplicate placed object ids in request');
+      }
+    }
 
     if (requestedIds.length > 0) {
       const existingInScene = await this.prisma.placedObject.findMany({
