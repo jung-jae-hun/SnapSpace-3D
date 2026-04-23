@@ -185,6 +185,23 @@ describe('ScenesService', () => {
     expect(result).toHaveLength(1);
   });
 
+  it('listCommands는 status/action 필터를 where 조건에 반영한다', async () => {
+    await service.listCommands('u-1', 's-1', 20, {
+      status: 'failed',
+      action: 'rename'
+    });
+
+    expect(prisma.sceneCommand.findMany).toHaveBeenCalledWith({
+      where: {
+        sceneId: 's-1',
+        status: 'failed',
+        action: 'rename'
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 20
+    });
+  });
+
   it('listCommands는 소유권이 없으면 NotFoundException을 던진다', async () => {
     prisma.scene.findFirst.mockResolvedValueOnce(null);
 

@@ -75,15 +75,36 @@ export class ScenesService {
     return scene;
   }
 
-  async listCommands(userId: string, sceneId: string, limit = 20) {
+  async listCommands(
+    userId: string,
+    sceneId: string,
+    limit = 20,
+    filters?: { status?: string; action?: string }
+  ) {
     await this.findOwnedScene(userId, sceneId);
 
     const safeLimit = Number.isFinite(limit)
       ? Math.max(1, Math.min(100, Math.trunc(limit)))
       : 20;
 
+    const statusFilter =
+      filters?.status === 'succeeded' || filters?.status === 'failed'
+        ? filters.status
+        : undefined;
+
+    const actionFilter =
+      filters?.action === 'rename' ||
+      filters?.action === 'archive' ||
+      filters?.action === 'restore'
+        ? filters.action
+        : undefined;
+
     return this.prisma.sceneCommand.findMany({
-      where: { sceneId },
+      where: {
+        sceneId,
+        ...(statusFilter ? { status: statusFilter } : {}),
+        ...(actionFilter ? { action: actionFilter } : {})
+      },
       orderBy: { createdAt: 'desc' },
       take: safeLimit
     });

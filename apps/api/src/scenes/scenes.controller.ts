@@ -50,10 +50,15 @@ export class ScenesController {
   listCommands(
     @Req() req: AuthenticatedRequest,
     @Param('sceneId') sceneId: string,
-    @Query('limit') limit?: string
+    @Query('limit') limit?: string,
+    @Query('status') status?: string,
+    @Query('action') action?: string
   ) {
     const parsed = limit ? Number(limit) : undefined;
-    return this.scenesService.listCommands(req.user.sub, sceneId, parsed);
+    return this.scenesService.listCommands(req.user.sub, sceneId, parsed, {
+      status,
+      action
+    });
   }
 
   @Post('scenes/:sceneId/commands')

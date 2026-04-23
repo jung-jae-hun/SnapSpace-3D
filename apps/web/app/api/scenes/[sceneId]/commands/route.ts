@@ -16,7 +16,19 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
   const { sceneId } = await context.params;
   const limit = request.nextUrl.searchParams.get('limit');
-  const query = limit ? `?limit=${encodeURIComponent(limit)}` : '';
+  const status = request.nextUrl.searchParams.get('status');
+  const action = request.nextUrl.searchParams.get('action');
+  const params = new URLSearchParams();
+  if (limit) {
+    params.set('limit', limit);
+  }
+  if (status) {
+    params.set('status', status);
+  }
+  if (action) {
+    params.set('action', action);
+  }
+  const query = params.size > 0 ? `?${params.toString()}` : '';
 
   const response = await fetch(backendUrl(`/scenes/${sceneId}/commands${query}`), {
     headers: {

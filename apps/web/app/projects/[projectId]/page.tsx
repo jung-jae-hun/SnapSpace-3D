@@ -26,6 +26,10 @@ type SceneCommandLog = {
   expectedVersion: number;
   status: string;
   createdAt: string;
+  result?: {
+    error?: string;
+    statusCode?: number;
+  };
 };
 
 export default function ProjectScenesPage() {
@@ -41,6 +45,8 @@ export default function ProjectScenesPage() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [sceneView, setSceneView] = useState<'active' | 'archived'>('active');
+  const [logStatusFilter, setLogStatusFilter] = useState<'all' | 'succeeded' | 'failed'>('all');
+  const [logActionFilter, setLogActionFilter] = useState<'all' | 'rename' | 'archive' | 'restore'>('all');
 
   const loadScenes = useCallback(async () => {
     if (!projectId) {
@@ -124,7 +130,15 @@ export default function ProjectScenesPage() {
   }
 
   async function loadCommandLogs(sceneId: string) {
-    const response = await fetch(`/api/scenes/${sceneId}/commands?limit=20`, {
+    const params = new URLSearchParams({ limit: '20' });
+    if (logStatusFilter !== 'all') {
+      params.set('status', logStatusFilter);
+    }
+    if (logActionFilter !== 'all') {
+      params.set('action', logActionFilter);
+    }
+
+    const response = await fetch(`/api/scenes/${sceneId}/commands?${params.toString()}`, {
       cache: 'no-store'
     });
 
@@ -136,6 +150,14 @@ export default function ProjectScenesPage() {
     const logs = (await response.json()) as SceneCommandLog[];
     setCommandLogs(logs);
   }
+
+  useEffect(() => {
+    if (!selectedScene) {
+      return;
+    }
+
+    void loadCommandLogs(selectedScene.id);
+  }, [selectedScene, logStatusFilter, logActionFilter]);
 
   async function handleRenameScene(scene: Scene) {
     const nextName = window.prompt('새 씬 이름을 입력하세요.', scene.name)?.trim();
@@ -280,6 +302,33 @@ export default function ProjectScenesPage() {
 
           <h3 style={{ marginTop: 16, marginBottom: 10 }}>커맨드 이력</h3>
           {selectedScene ? (
+            <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+              <select
+                className="input"
+                value={logStatusFilter}
+                onChange={(e) => setLogStatusFilter(e.target.value as 'all' | 'succeeded' | 'failed')}
+                style={{ marginTop: 0 }}
+              >
+                <option value="all">상태 전체</option>
+                <option value="succeeded">성공</option>
+                <option value="failed">실패</option>
+              </select>
+              <select
+                className="input"
+                value={logActionFilter}
+                onChange={(e) =>
+                  setLogActionFilter(e.target.value as 'all' | 'rename' | 'archive' | 'restore')
+                }
+                style={{ marginTop: 0 }}
+              >
+                <option value="all">액션 전체</option>
+                <option value="rename">rename</option>
+                <option value="archive">archive</option>
+                <option value="restore">restore</option>
+              </select>
+            </div>
+          ) : null}
+          {selectedScene ? (
             commandLogs.length > 0 ? (
               <div className="project-list">
                 {commandLogs.map((log) => (
@@ -289,6 +338,18 @@ export default function ProjectScenesPage() {
                       expectedVersion: {log.expectedVersion}
                       <br />
                       status: {log.status}
+                      {log.status === 'failed' && log.result?.error ? (
+                        <>
+                          <br />
+                          error: {log.result.error}
+                          {typeof log.result.statusCode === 'number' ? (
+                            <>
+                              <br />
+                              statusCode: {log.result.statusCode}
+                            </>
+                          ) : null}
+                        </>
+                      ) : null}
                     </p>
                   </article>
                 ))}
