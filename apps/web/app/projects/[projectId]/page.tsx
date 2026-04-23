@@ -19,6 +19,15 @@ type SceneDetail = {
   projectId: string;
 };
 
+type SceneCommandLog = {
+  id: string;
+  commandId: string;
+  action: string;
+  expectedVersion: number;
+  status: string;
+  createdAt: string;
+};
+
 export default function ProjectScenesPage() {
   const params = useParams<{ projectId: string }>();
   const projectId = params.projectId;
@@ -28,6 +37,7 @@ export default function ProjectScenesPage() {
 
   const [scenes, setScenes] = useState<Scene[]>([]);
   const [selectedScene, setSelectedScene] = useState<SceneDetail | null>(null);
+  const [commandLogs, setCommandLogs] = useState<SceneCommandLog[]>([]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [sceneView, setSceneView] = useState<'active' | 'archived'>('active');
@@ -110,6 +120,21 @@ export default function ProjectScenesPage() {
     const detail = (await response.json()) as SceneDetail;
     setSelectedScene(detail);
     setMessage(`씬 상세 조회 완료: ${detail.name}`);
+    await loadCommandLogs(sceneId);
+  }
+
+  async function loadCommandLogs(sceneId: string) {
+    const response = await fetch(`/api/scenes/${sceneId}/commands?limit=20`, {
+      cache: 'no-store'
+    });
+
+    if (!response.ok) {
+      setCommandLogs([]);
+      return;
+    }
+
+    const logs = (await response.json()) as SceneCommandLog[];
+    setCommandLogs(logs);
   }
 
   async function handleRenameScene(scene: Scene) {
@@ -137,6 +162,7 @@ export default function ProjectScenesPage() {
 
     setMessage('씬 이름 변경 완료');
     await loadScenes();
+    await loadCommandLogs(scene.id);
   }
 
   async function handleArchiveScene(scene: Scene) {
@@ -158,6 +184,7 @@ export default function ProjectScenesPage() {
 
     setMessage('씬 아카이브 완료');
     await loadScenes();
+    await loadCommandLogs(scene.id);
   }
 
   async function handleRestoreScene(scene: Scene) {
@@ -179,6 +206,7 @@ export default function ProjectScenesPage() {
 
     setMessage('씬 복원 완료');
     await loadScenes();
+    await loadCommandLogs(scene.id);
   }
 
   return (
@@ -247,6 +275,32 @@ export default function ProjectScenesPage() {
           ) : (
             <p className="subtle" style={{ margin: 0 }}>
               씬을 선택하면 상세 정보가 표시됩니다.
+            </p>
+          )}
+
+          <h3 style={{ marginTop: 16, marginBottom: 10 }}>커맨드 이력</h3>
+          {selectedScene ? (
+            commandLogs.length > 0 ? (
+              <div className="project-list">
+                {commandLogs.map((log) => (
+                  <article key={log.id} className="project-item">
+                    <strong>{log.action}</strong>
+                    <p className="subtle" style={{ margin: '6px 0 0' }}>
+                      expectedVersion: {log.expectedVersion}
+                      <br />
+                      status: {log.status}
+                    </p>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <p className="subtle" style={{ margin: 0 }}>
+                이력이 없습니다.
+              </p>
+            )
+          ) : (
+            <p className="subtle" style={{ margin: 0 }}>
+              씬을 선택하면 이력이 표시됩니다.
             </p>
           )}
         </div>

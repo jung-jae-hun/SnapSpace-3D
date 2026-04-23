@@ -6,6 +6,29 @@ type RouteContext = {
   params: Promise<{ sceneId: string }>;
 };
 
+export async function GET(request: NextRequest, context: RouteContext) {
+  const cookieStore = await cookies();
+  const accessToken = cookieStore.get('snapspace_access_token')?.value;
+
+  if (!accessToken) {
+    return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
+  }
+
+  const { sceneId } = await context.params;
+  const limit = request.nextUrl.searchParams.get('limit');
+  const query = limit ? `?limit=${encodeURIComponent(limit)}` : '';
+
+  const response = await fetch(backendUrl(`/scenes/${sceneId}/commands${query}`), {
+    headers: {
+      Authorization: `Bearer ${accessToken}`
+    },
+    cache: 'no-store'
+  });
+
+  const data = await response.json();
+  return NextResponse.json(data, { status: response.status });
+}
+
 export async function POST(request: NextRequest, context: RouteContext) {
   const cookieStore = await cookies();
   const accessToken = cookieStore.get('snapspace_access_token')?.value;

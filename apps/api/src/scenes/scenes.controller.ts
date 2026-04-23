@@ -45,6 +45,17 @@ export class ScenesController {
     return this.scenesService.findOne(req.user.sub, sceneId);
   }
 
+  @Get('scenes/:sceneId/commands')
+  @ApiOperation({ summary: '씬 커맨드 이력 조회' })
+  listCommands(
+    @Req() req: AuthenticatedRequest,
+    @Param('sceneId') sceneId: string,
+    @Query('limit') limit?: string
+  ) {
+    const parsed = limit ? Number(limit) : undefined;
+    return this.scenesService.listCommands(req.user.sub, sceneId, parsed);
+  }
+
   @Post('scenes/:sceneId/commands')
   @ApiOperation({ summary: '씬 변경 커맨드 실행(rename/archive/restore)' })
   executeCommand(

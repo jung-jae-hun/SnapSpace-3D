@@ -23,6 +23,21 @@ export class ScenesService {
     }
   }
 
+  private async findOwnedScene(userId: string, sceneId: string) {
+    const scene = await this.prisma.scene.findFirst({
+      where: {
+        id: sceneId,
+        project: { userId }
+      }
+    });
+
+    if (!scene) {
+      throw new NotFoundException('Scene not found');
+    }
+
+    return scene;
+  }
+
   async create(userId: string, projectId: string, dto: CreateSceneDto) {
     await this.ensureOwnedProject(userId, projectId);
 
@@ -51,18 +66,26 @@ export class ScenesService {
   }
 
   async findOne(userId: string, sceneId: string) {
-    const scene = await this.prisma.scene.findFirst({
-      where: {
-        id: sceneId,
-        archivedAt: null,
-        project: { userId }
-      }
-    });
-
-    if (!scene) {
+    const scene = await this.findOwnedScene(userId, sceneId);
+    if (scene.archivedAt) {
       throw new NotFoundException('Scene not found');
     }
+
     return scene;
+  }
+
+  async listCommands(userId: string, sceneId: string, limit = 20) {
+    await this.findOwnedScene(userId, sceneId);
+
+    const safeLimit = Number.isFinite(limit)
+      ? Math.max(1, Math.min(100, Math.trunc(limit)))
+      : 20;
+
+    return this.prisma.sceneCommand.findMany({
+      where: { sceneId },
+      orderBy: { createdAt: 'desc' },
+      take: safeLimit
+    });
   }
 
   async executeCommand(userId: string, sceneId: string, dto: SceneCommandDto) {
@@ -84,16 +107,7 @@ export class ScenesService {
       };
     }
 
-    const scene = await this.prisma.scene.findFirst({
-      where: {
-        id: sceneId,
-        project: { userId }
-      }
-    });
-
-    if (!scene) {
-      throw new NotFoundException('Scene not found');
-    }
+    const scene = await this.findOwnedScene(userId, sceneId);
 
     if (scene.version !== dto.expectedVersion) {
       throw new ConflictException('Scene version mismatch');

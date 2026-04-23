@@ -14,6 +14,7 @@ type MockPrisma = {
   sceneCommand: {
     findUnique: jest.Mock;
     create: jest.Mock;
+    findMany: jest.Mock;
   };
 };
 
@@ -46,7 +47,15 @@ describe('ScenesService', () => {
       },
       sceneCommand: {
         findUnique: jest.fn().mockResolvedValue(null),
-        create: jest.fn().mockResolvedValue({ id: 'cmd-log-1' })
+        create: jest.fn().mockResolvedValue({ id: 'cmd-log-1' }),
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'cmd-log-1',
+            action: 'rename',
+            commandId: 'cmd-1',
+            expectedVersion: 1
+          }
+        ])
       }
     };
 
@@ -143,5 +152,24 @@ describe('ScenesService', () => {
         expectedVersion: 99
       })
     ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('listCommands는 소유권 확인 후 최신순 이력을 반환한다', async () => {
+    const result = await service.listCommands('u-1', 's-1', 10);
+
+    expect(prisma.sceneCommand.findMany).toHaveBeenCalledWith({
+      where: { sceneId: 's-1' },
+      orderBy: { createdAt: 'desc' },
+      take: 10
+    });
+    expect(result).toHaveLength(1);
+  });
+
+  it('listCommands는 소유권이 없으면 NotFoundException을 던진다', async () => {
+    prisma.scene.findFirst.mockResolvedValueOnce(null);
+
+    await expect(service.listCommands('u-1', 's-foreign', 10)).rejects.toBeInstanceOf(
+      NotFoundException
+    );
   });
 });
