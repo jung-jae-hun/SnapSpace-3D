@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  HttpException,
   Injectable,
   NotFoundException
 } from '@nestjs/common';
@@ -113,27 +114,52 @@ export class ScenesService {
       throw new ConflictException('Scene version mismatch');
     }
 
-    const result = await this.executeAction(scene, dto);
+    try {
+      const result = await this.executeAction(scene, dto);
 
-    await this.prisma.sceneCommand.create({
-      data: {
-        sceneId,
-        userId,
-        commandId: dto.commandId,
+      await this.prisma.sceneCommand.create({
+        data: {
+          sceneId,
+          userId,
+          commandId: dto.commandId,
+          action: dto.action,
+          expectedVersion: dto.expectedVersion,
+          payload: dto.payload as Prisma.InputJsonValue | undefined,
+          result: result as unknown as Prisma.InputJsonValue,
+          status: 'succeeded'
+        }
+      });
+
+      return {
+        idempotent: false,
         action: dto.action,
-        expectedVersion: dto.expectedVersion,
-        payload: dto.payload as Prisma.InputJsonValue | undefined,
-        result: result as unknown as Prisma.InputJsonValue,
-        status: 'succeeded'
-      }
-    });
+        sceneId,
+        result
+      };
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Unknown scene command failure';
+      const statusCode =
+        error instanceof HttpException ? error.getStatus() : 500;
 
-    return {
-      idempotent: false,
-      action: dto.action,
-      sceneId,
-      result
-    };
+      await this.prisma.sceneCommand.create({
+        data: {
+          sceneId,
+          userId,
+          commandId: dto.commandId,
+          action: dto.action,
+          expectedVersion: dto.expectedVersion,
+          payload: dto.payload as Prisma.InputJsonValue | undefined,
+          result: {
+            error: message,
+            statusCode
+          } as Prisma.InputJsonValue,
+          status: 'failed'
+        }
+      });
+
+      throw error;
+    }
   }
 
   private async executeAction(scene: { id: string; name: string; version: number; archivedAt: Date | null }, dto: SceneCommandDto) {

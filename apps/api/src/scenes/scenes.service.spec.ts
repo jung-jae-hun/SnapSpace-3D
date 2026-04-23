@@ -154,6 +154,26 @@ describe('ScenesService', () => {
     ).rejects.toBeInstanceOf(ConflictException);
   });
 
+  it('executeCommand 실패 시 failed 상태로 커맨드 로그를 남긴다', async () => {
+    await expect(
+      service.executeCommand('u-1', 's-1', {
+        commandId: 'cmd-failed-1',
+        action: 'rename',
+        expectedVersion: 1,
+        payload: { name: 'a' }
+      })
+    ).rejects.toBeInstanceOf(Error);
+
+    expect(prisma.sceneCommand.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          commandId: 'cmd-failed-1',
+          status: 'failed'
+        })
+      })
+    );
+  });
+
   it('listCommands는 소유권 확인 후 최신순 이력을 반환한다', async () => {
     const result = await service.listCommands('u-1', 's-1', 10);
 
