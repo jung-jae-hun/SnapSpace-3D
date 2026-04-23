@@ -1,11 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsEmail, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 
 export class CreateProjectDto {
-  @ApiProperty({ example: 'owner@snapspace.io' })
-  @IsEmail()
-  ownerEmail!: string;
-
   @ApiProperty({ example: 'Station Layout Demo' })
   @IsString()
   @MinLength(2)

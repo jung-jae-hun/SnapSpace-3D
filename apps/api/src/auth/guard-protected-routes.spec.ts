@@ -13,9 +13,9 @@ describe('Guard-protected routes', () => {
   let jwtService: { verifyAsync: jest.Mock };
 
   const projectsServiceMock = {
-    create: jest.fn().mockResolvedValue({ id: 'p-1', name: 'Project 1' }),
-    findByOwnerEmail: jest.fn().mockResolvedValue([]),
-    findOne: jest.fn().mockResolvedValue({ id: 'p-1', name: 'Project 1' })
+    createForUser: jest.fn().mockResolvedValue({ id: 'p-1', name: 'Project 1' }),
+    findByOwner: jest.fn().mockResolvedValue([]),
+    findOneForUser: jest.fn().mockResolvedValue({ id: 'p-1', name: 'Project 1' })
   };
 
   const scenesServiceMock = {
@@ -59,14 +59,14 @@ describe('Guard-protected routes', () => {
 
   it('유효 토큰으로 GET /projects 요청 시 200', async () => {
     await request(app.getHttpServer())
-      .get('/projects?email=user@test.com')
+      .get('/projects')
       .set('Authorization', 'Bearer valid-token')
       .expect(200);
 
     expect(jwtService.verifyAsync).toHaveBeenCalledWith('valid-token', {
       secret: process.env.JWT_SECRET ?? 'change-me'
     });
-    expect(projectsServiceMock.findByOwnerEmail).toHaveBeenCalledWith('user@test.com');
+    expect(projectsServiceMock.findByOwner).toHaveBeenCalledWith('u-1');
   });
 
   it('토큰 없이 GET /projects/:projectId/scenes 요청 시 401', async () => {
@@ -79,6 +79,6 @@ describe('Guard-protected routes', () => {
       .set('Authorization', 'Bearer valid-token')
       .expect(200);
 
-    expect(scenesServiceMock.findByProject).toHaveBeenCalledWith('p-1');
+    expect(scenesServiceMock.findByProject).toHaveBeenCalledWith('u-1', 'p-1');
   });
 });

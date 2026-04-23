@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateProjectDto } from './dto/create-project.dto';
 
@@ -6,12 +6,11 @@ import { CreateProjectDto } from './dto/create-project.dto';
 export class ProjectsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(dto: CreateProjectDto) {
-    const user = await this.prisma.user.upsert({
-      where: { email: dto.ownerEmail },
-      update: {},
-      create: { email: dto.ownerEmail }
-    });
+  async createForUser(userId: string, dto: CreateProjectDto) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      throw new UnauthorizedException('User not found');
+    }
 
     return this.prisma.project.create({
       data: {
@@ -22,17 +21,19 @@ export class ProjectsService {
     });
   }
 
-  async findByOwnerEmail(ownerEmail: string) {
+  async findByOwner(userId: string) {
     return this.prisma.project.findMany({
       where: {
-        user: { email: ownerEmail }
+        userId
       },
       orderBy: { createdAt: 'desc' }
     });
   }
 
-  async findOne(projectId: string) {
-    const project = await this.prisma.project.findUnique({ where: { id: projectId } });
+  async findOneForUser(projectId: string, userId: string) {
+    const project = await this.prisma.project.findFirst({
+      where: { id: projectId, userId }
+    });
     if (!project) {
       throw new NotFoundException('Project not found');
     }
