@@ -2,5 +2,10 @@
   "name": "@snapspace/scene-engine",
   "version": "0.1.0",
   "private": true,
-  "type": "module"
+  "type": "module",
+  "dependencies": {
+    "lodash-es": "^4.18.1",
+    "three": "^0.184.0",
+    "zod": "^4.3.6"
+  }
 }
