@@ -7,6 +7,7 @@ type MockPrisma = {
   };
   placedObject: {
     deleteMany: jest.Mock;
+    findMany: jest.Mock;
     create: jest.Mock;
     upsert: jest.Mock;
   };
@@ -33,6 +34,7 @@ describe('PlacedObjectsService.bulkUpsert', () => {
       },
       placedObject: {
         deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+        findMany: jest.fn().mockResolvedValue([{ id: 'p-1' }]),
         create: jest.fn().mockImplementation(async ({ data }) => ({
           id: data.id ?? 'new-id',
           ...data
@@ -71,6 +73,20 @@ describe('PlacedObjectsService.bulkUpsert', () => {
     expect(prisma.placedObject.upsert).toHaveBeenCalledTimes(1);
     expect(prisma.placedObject.create).toHaveBeenCalledTimes(1);
     expect(result).toEqual({ count: 2, mode: 'upsert' });
+  });
+
+  it('upsert 모드에서 다른 scene id가 포함되면 NotFoundException을 던진다', async () => {
+    prisma.placedObject.findMany.mockResolvedValueOnce([]);
+
+    await expect(
+      service.bulkUpsert('scene-1', {
+        mode: 'upsert',
+        items: [makeItem('foreign-id')]
+      })
+    ).rejects.toBeInstanceOf(NotFoundException);
+
+    expect(prisma.placedObject.upsert).not.toHaveBeenCalled();
+    expect(prisma.placedObject.create).not.toHaveBeenCalled();
   });
 
   it('존재하지 않는 scene이면 NotFoundException을 던진다', async () => {

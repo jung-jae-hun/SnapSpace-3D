@@ -116,6 +116,27 @@ export class PlacedObjectsService {
       return { count: created.length, mode };
     }
 
+    const requestedIds = dto.items
+      .map((item) => item.id)
+      .filter((id): id is string => Boolean(id));
+
+    if (requestedIds.length > 0) {
+      const existingInScene = await this.prisma.placedObject.findMany({
+        where: {
+          sceneId,
+          id: { in: requestedIds }
+        },
+        select: { id: true }
+      });
+
+      const existingIdSet = new Set(existingInScene.map((item) => item.id));
+      const missingInScene = requestedIds.find((id) => !existingIdSet.has(id));
+
+      if (missingInScene) {
+        throw new NotFoundException('Placed object not found in scene');
+      }
+    }
+
     const result = await this.prisma.$transaction(
       dto.items.map((item) =>
         item.id
@@ -141,16 +162,16 @@ export class PlacedObjectsService {
               }
             })
           : this.prisma.placedObject.create({
-          data: {
-            scene: { connect: { id: sceneId } },
-            objectDefinition: { connect: { id: item.objectDefinitionId } },
-            name: item.name,
-            position: item.position as Prisma.InputJsonValue,
-            rotationY: item.rotationY ?? 0,
-            scale: item.scale as Prisma.InputJsonValue,
-            params: item.params as Prisma.InputJsonValue | undefined
-          }
-        })
+              data: {
+                scene: { connect: { id: sceneId } },
+                objectDefinition: { connect: { id: item.objectDefinitionId } },
+                name: item.name,
+                position: item.position as Prisma.InputJsonValue,
+                rotationY: item.rotationY ?? 0,
+                scale: item.scale as Prisma.InputJsonValue,
+                params: item.params as Prisma.InputJsonValue | undefined
+              }
+            })
       )
     );
 
