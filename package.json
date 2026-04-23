@@ -10,7 +10,12 @@
     "bootstrap": "bash ./scripts/install-all-libs.sh",
     "dev": "echo \"Run app-specific dev scripts after bootstrap\"",
     "build": "echo \"Run app-specific build scripts after bootstrap\"",
-    "lint": "echo \"Run app-specific lint scripts after bootstrap\""
+    "lint": "echo \"Run app-specific lint scripts after bootstrap\"",
+    "ci:lint": "pnpm --filter @snapspace/api lint:ci && pnpm --filter @snapspace/web lint:ci && pnpm --filter @snapspace/worker lint:ci",
+    "ci:typecheck": "pnpm --filter @snapspace/api typecheck && pnpm --filter @snapspace/web typecheck && pnpm --filter @snapspace/worker typecheck",
+    "ci:test": "pnpm --filter @snapspace/api test",
+    "ci:build": "pnpm --filter @snapspace/api build && pnpm --filter @snapspace/web build && pnpm --filter @snapspace/worker build",
+    "ci:quality": "pnpm run ci:lint && pnpm run ci:typecheck && pnpm run ci:test && pnpm run ci:build"
   },
   "devDependencies": {
     "@types/node": "^25.6.0",

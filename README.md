@@ -52,3 +52,24 @@ Docker 실행 기준 폴더는 아래 경로를 사용합니다.
 
 예시:
 - SNAPSPACE_API_BASE_URL=http://localhost:8080/api/v1 pnpm --filter @snapspace/web dev
+
+## 6. CI 품질게이트
+Sprint 4 품질게이트는 아래 4단계를 고정 순서로 수행합니다.
+
+1) Lint
+- pnpm run ci:lint
+
+2) Typecheck
+- pnpm run ci:typecheck
+
+3) Test
+- pnpm run ci:test
+
+4) Build
+- pnpm run ci:build
+
+전체를 한 번에 실행하려면:
+- pnpm run ci:quality
+
+GitHub Actions 워크플로 파일:
+- .github/workflows/quality-gate.yml

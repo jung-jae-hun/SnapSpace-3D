@@ -61,9 +61,9 @@ export default function HomePage() {
     },
     {
       label: 'Sprint 4',
-      done: 3,
+      done: 4,
       total: 4,
-      note: 'export job+worker, GLB 다운로드, retry/timeout 정책 반영 (CI 품질게이트만 잔여)'
+      note: 'export job+worker, GLB 다운로드, retry/timeout 정책, CI 품질게이트 완료'
     }
   ];
 

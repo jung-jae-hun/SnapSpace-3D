@@ -5,8 +5,10 @@
   "scripts": {
     "dev": "next dev -p 3000",
     "build": "next build",
+    "typecheck": "tsc --noEmit",
     "start": "next start -p 3000",
-    "lint": "next lint"
+    "lint": "next lint",
+    "lint:ci": "tsc --noEmit"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.7",

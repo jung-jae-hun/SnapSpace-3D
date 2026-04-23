@@ -5,10 +5,12 @@
   "scripts": {
     "dev": "nest start --watch",
     "build": "nest build",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
     "start": "node dist/main.js",
     "test": "jest --runInBand",
     "test:watch": "jest --watch",
     "lint": "eslint .",
+    "lint:ci": "tsc -p tsconfig.json --noEmit",
     "prisma:generate": "prisma generate --schema prisma/schema.prisma",
     "prisma:migrate": "prisma migrate dev --schema prisma/schema.prisma",
     "prisma:studio": "prisma studio --schema prisma/schema.prisma"
