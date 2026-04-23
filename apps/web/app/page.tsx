@@ -61,9 +61,9 @@ export default function HomePage() {
     },
     {
       label: 'Sprint 4',
-      done: 0,
+      done: 3,
       total: 4,
-      note: 'export worker/GLB 다운로드/운영 안정화 대기'
+      note: 'export job+worker, GLB 다운로드, retry/timeout 정책 반영 (CI 품질게이트만 잔여)'
     }
   ];
 

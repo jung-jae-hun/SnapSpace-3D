@@ -7,5 +7,14 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
     "lint": "eslint ."
+  },
+  "dependencies": {
+    "bullmq": "^5.76.1",
+    "ioredis": "^5.10.1"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.9.3"
   }
 }

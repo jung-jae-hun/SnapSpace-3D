@@ -143,7 +143,24 @@ importers:
         specifier: ^19.2.3
         version: 19.2.3(@types/react@19.2.14)
 
-  apps/worker: {}
+  apps/worker:
+    dependencies:
+      bullmq:
+        specifier: ^5.76.1
+        version: 5.76.1
+      ioredis:
+        specifier: ^5.10.1
+        version: 5.10.1
+    devDependencies:
+      '@types/node':
+        specifier: ^25.6.0
+        version: 25.6.0
+      ts-node-dev:
+        specifier: ^2.0.0
+        version: 2.0.0(@types/node@25.6.0)(typescript@5.9.3)
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
 
   packages/config: {}
 

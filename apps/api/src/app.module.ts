@@ -7,6 +7,7 @@ import { AssetsModule } from './assets/assets.module';
 import { ObjectDefinitionsModule } from './object-definitions/object-definitions.module';
 import { PlacedObjectsModule } from './placed-objects/placed-objects.module';
 import { ArrangeModule } from './arrange/arrange.module';
+import { ExportsModule } from './exports/exports.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { ArrangeModule } from './arrange/arrange.module';
     ProjectsModule,
     ScenesModule,
     ArrangeModule,
+    ExportsModule,
     AssetsModule,
     ObjectDefinitionsModule,
     PlacedObjectsModule

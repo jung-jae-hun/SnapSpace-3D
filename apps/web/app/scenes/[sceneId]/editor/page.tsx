@@ -31,6 +31,18 @@ type GeneratedObject = {
   scale: { x: number; y: number; z: number };
 };
 
+type SceneExport = {
+  id: string;
+  status: 'queued' | 'processing' | 'succeeded' | 'failed';
+  format: 'glb';
+  createdAt: string;
+  completedAt?: string;
+  retryCount: number;
+  retryLimit: number;
+  timeoutMs: number;
+  lastError?: string;
+};
+
 export default function SceneEditorPage() {
   const params = useParams<{ sceneId: string }>();
   const sceneId = params.sceneId;
@@ -38,6 +50,7 @@ export default function SceneEditorPage() {
   const [catalog, setCatalog] = useState<ObjectDefinition[]>([]);
   const [placements, setPlacements] = useState<PlacedObject[]>([]);
   const [generated, setGenerated] = useState<GeneratedObject[]>([]);
+  const [sceneExports, setSceneExports] = useState<SceneExport[]>([]);
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const [status, setStatus] = useState('초기화 중...');
   const [saving, setSaving] = useState(false);
@@ -62,10 +75,11 @@ export default function SceneEditorPage() {
   async function loadInitial() {
     setStatus('카탈로그/씬 로드 중...');
 
-    const [catalogRes, placementsRes, generatedRes] = await Promise.all([
+    const [catalogRes, placementsRes, generatedRes, exportsRes] = await Promise.all([
       fetch('/api/object-definitions', { cache: 'no-store' }),
       fetch(`/api/scenes/${sceneId}/placed-objects`, { cache: 'no-store' }),
-      fetch(`/api/scenes/${sceneId}/generated-objects`, { cache: 'no-store' })
+      fetch(`/api/scenes/${sceneId}/generated-objects`, { cache: 'no-store' }),
+      fetch(`/api/scenes/${sceneId}/exports`, { cache: 'no-store' })
     ]);
 
     if (!catalogRes.ok || !placementsRes.ok || !generatedRes.ok) {
@@ -76,6 +90,7 @@ export default function SceneEditorPage() {
     const catalogData = (await catalogRes.json()) as ObjectDefinition[];
     const placementData = (await placementsRes.json()) as PlacedObject[];
     const generatedData = (await generatedRes.json()) as GeneratedObject[];
+    const exportData = exportsRes.ok ? ((await exportsRes.json()) as SceneExport[]) : [];
 
     setCatalog(catalogData);
     setPlacements(
@@ -97,6 +112,7 @@ export default function SceneEditorPage() {
       }))
     );
     setGenerated(generatedData);
+    setSceneExports(exportData);
 
     setStatus('로드 완료');
   }
@@ -148,6 +164,31 @@ export default function SceneEditorPage() {
 
     await loadInitial();
     setStatus('generate 완료');
+  }
+
+  async function runExport() {
+    setStatus('export job 생성 중...');
+
+    const response = await fetch(`/api/scenes/${sceneId}/exports`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ format: 'glb' })
+    });
+
+    if (!response.ok) {
+      setStatus('export 생성 실패');
+      return;
+    }
+
+    await loadInitial();
+    setStatus('export job 생성 완료');
+  }
+
+  function downloadExport(exportId: string) {
+    const link = document.createElement('a');
+    link.href = `/api/exports/${exportId}/download`;
+    link.download = `scene-${exportId}.glb`;
+    link.click();
   }
 
   async function saveScene(nextPlacements: PlacedObject[]) {
@@ -410,6 +451,55 @@ export default function SceneEditorPage() {
             <p className="subtle" style={{ margin: '8px 0 0' }}>
               generated count: {generated.length}
             </p>
+          </div>
+
+          <div className="card" style={{ marginTop: 14 }}>
+            <p style={{ margin: 0, fontWeight: 700 }}>Export (GLB)</p>
+            <p className="subtle" style={{ marginTop: 6 }}>
+              worker 큐에 export job을 넣고 완료 시 GLB 다운로드가 가능합니다.
+            </p>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button className="btn btn-primary" onClick={() => void runExport()}>
+                Export GLB
+              </button>
+              <button className="btn btn-ghost" onClick={() => void loadInitial()}>
+                상태 새로고침
+              </button>
+            </div>
+
+            <div className="project-list" style={{ marginTop: 10 }}>
+              {sceneExports.length === 0 ? (
+                <p className="subtle" style={{ margin: 0 }}>
+                  아직 export 이력이 없습니다.
+                </p>
+              ) : (
+                sceneExports.map((item) => (
+                  <article key={item.id} className="project-item">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                      <strong>{item.id.slice(0, 8)}</strong>
+                      <span className="label">{item.status}</span>
+                    </div>
+                    <p className="subtle" style={{ margin: '6px 0 0' }}>
+                      retry {item.retryCount}/{item.retryLimit} · timeout {Math.round(item.timeoutMs / 1000)}s
+                    </p>
+                    {item.lastError ? (
+                      <p className="subtle" style={{ margin: '6px 0 0', color: '#a03030' }}>
+                        error: {item.lastError}
+                      </p>
+                    ) : null}
+                    <div style={{ marginTop: 8 }}>
+                      <button
+                        className="btn btn-ghost"
+                        onClick={() => downloadExport(item.id)}
+                        disabled={item.status !== 'succeeded'}
+                      >
+                        다운로드
+                      </button>
+                    </div>
+                  </article>
+                ))
+              )}
+            </div>
           </div>
         </div>
       </section>
