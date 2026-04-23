@@ -2,6 +2,12 @@ import { ApiProperty } from '@nestjs/swagger';
 import { IsNumber, IsOptional, IsString, MinLength } from 'class-validator';
 
 export class CreatePlacedObjectDto {
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  @MinLength(3)
+  id?: string;
+
   @ApiProperty()
   @IsString()
   @MinLength(3)

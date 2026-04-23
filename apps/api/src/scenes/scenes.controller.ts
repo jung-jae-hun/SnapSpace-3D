@@ -1,9 +1,11 @@
-import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CreateSceneDto } from './dto/create-scene.dto';
 import { ScenesService } from './scenes.service';
 
 @ApiTags('scenes')
+@UseGuards(JwtAuthGuard)
 @Controller()
 export class ScenesController {
   constructor(private readonly scenesService: ScenesService) {}

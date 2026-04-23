@@ -5,15 +5,18 @@ import {
   Get,
   Param,
   Patch,
-  Post
+  Post,
+  UseGuards
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { BulkUpsertPlacedObjectsDto } from './dto/bulk-upsert-placed-objects.dto';
 import { CreatePlacedObjectDto } from './dto/create-placed-object.dto';
 import { UpdatePlacedObjectDto } from './dto/update-placed-object.dto';
 import { PlacedObjectsService } from './placed-objects.service';
 
 @ApiTags('placed-objects')
+@UseGuards(JwtAuthGuard)
 @Controller('scenes/:sceneId/placed-objects')
 export class PlacedObjectsController {
   constructor(private readonly placedObjectsService: PlacedObjectsService) {}

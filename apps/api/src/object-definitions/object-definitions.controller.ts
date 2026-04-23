@@ -6,14 +6,17 @@ import {
   Param,
   Patch,
   Post,
-  Query
+  Query,
+  UseGuards
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CreateObjectDefinitionDto } from './dto/create-object-definition.dto';
 import { UpdateObjectDefinitionDto } from './dto/update-object-definition.dto';
 import { ObjectDefinitionsService } from './object-definitions.service';
 
 @ApiTags('object-definitions')
+@UseGuards(JwtAuthGuard)
 @Controller('object-definitions')
 export class ObjectDefinitionsController {
   constructor(

@@ -20,6 +20,7 @@ async function bootstrap() {
     .setTitle('SnapSpace 3D API')
     .setDescription('Sprint 1 minimal API: auth/project/scene')
     .setVersion('0.1.0')
+    .addBearerAuth()
     .build();
 
   const document = SwaggerModule.createDocument(app, config);

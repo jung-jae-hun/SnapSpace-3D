@@ -87,15 +87,60 @@ export class PlacedObjectsService {
   async bulkUpsert(sceneId: string, dto: BulkUpsertPlacedObjectsDto) {
     await this.ensureScene(sceneId);
 
-    await this.prisma.placedObject.deleteMany({ where: { sceneId } });
+    const mode = dto.mode ?? 'replace';
 
-    if (dto.items.length === 0) {
-      return { count: 0 };
+    if (mode === 'replace') {
+      await this.prisma.placedObject.deleteMany({ where: { sceneId } });
+
+      if (dto.items.length === 0) {
+        return { count: 0, mode };
+      }
+
+      const created = await this.prisma.$transaction(
+        dto.items.map((item) =>
+          this.prisma.placedObject.create({
+            data: {
+              id: item.id,
+              scene: { connect: { id: sceneId } },
+              objectDefinition: { connect: { id: item.objectDefinitionId } },
+              name: item.name,
+              position: item.position as Prisma.InputJsonValue,
+              rotationY: item.rotationY ?? 0,
+              scale: item.scale as Prisma.InputJsonValue,
+              params: item.params as Prisma.InputJsonValue | undefined
+            }
+          })
+        )
+      );
+
+      return { count: created.length, mode };
     }
 
-    const created = await this.prisma.$transaction(
+    const result = await this.prisma.$transaction(
       dto.items.map((item) =>
-        this.prisma.placedObject.create({
+        item.id
+          ? this.prisma.placedObject.upsert({
+              where: { id: item.id },
+              update: {
+                objectDefinitionId: item.objectDefinitionId,
+                name: item.name,
+                position: item.position as Prisma.InputJsonValue,
+                rotationY: item.rotationY ?? 0,
+                scale: item.scale as Prisma.InputJsonValue,
+                params: item.params as Prisma.InputJsonValue | undefined
+              },
+              create: {
+                id: item.id,
+                scene: { connect: { id: sceneId } },
+                objectDefinition: { connect: { id: item.objectDefinitionId } },
+                name: item.name,
+                position: item.position as Prisma.InputJsonValue,
+                rotationY: item.rotationY ?? 0,
+                scale: item.scale as Prisma.InputJsonValue,
+                params: item.params as Prisma.InputJsonValue | undefined
+              }
+            })
+          : this.prisma.placedObject.create({
           data: {
             scene: { connect: { id: sceneId } },
             objectDefinition: { connect: { id: item.objectDefinitionId } },
@@ -109,6 +154,6 @@ export class PlacedObjectsService {
       )
     );
 
-    return { count: created.length };
+    return { count: result.length, mode };
   }
 }
