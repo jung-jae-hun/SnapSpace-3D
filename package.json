@@ -11,5 +11,11 @@
     "dev": "echo \"Run app-specific dev scripts after bootstrap\"",
     "build": "echo \"Run app-specific build scripts after bootstrap\"",
     "lint": "echo \"Run app-specific lint scripts after bootstrap\""
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "eslint": "^10.2.1",
+    "prettier": "^3.8.3",
+    "typescript": "^5.9.3"
   }
 }
