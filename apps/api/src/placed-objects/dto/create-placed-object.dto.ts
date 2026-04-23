@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsNumber, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsNumber, IsObject, IsOptional, IsString, MinLength } from 'class-validator';
 
 export class CreatePlacedObjectDto {
   @ApiProperty({ required: false })
@@ -19,6 +19,7 @@ export class CreatePlacedObjectDto {
   name?: string;
 
   @ApiProperty({ example: { x: 0, y: 0, z: 0 } })
+  @IsObject()
   position!: Record<string, unknown>;
 
   @ApiProperty({ required: false, example: 0 })
@@ -27,6 +28,7 @@ export class CreatePlacedObjectDto {
   rotationY?: number;
 
   @ApiProperty({ example: { x: 1, y: 1, z: 1 } })
+  @IsObject()
   scale!: Record<string, unknown>;
 
   @ApiProperty({ required: false })
