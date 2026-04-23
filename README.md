@@ -38,3 +38,17 @@ Docker 실행 기준 폴더는 아래 경로를 사용합니다.
 
 ## 4. 순차 개발 체크리스트
 - Doc/sequential-development-checklist.md
+
+## 5. Web 빠른 실행
+웹 앱은 Next.js App Router 기반이며, 브라우저가 직접 API를 호출하지 않고
+`apps/web/app/api/*` 라우트를 통해 Nest API로 프록시합니다.
+
+1) 기본 실행
+- pnpm --filter @snapspace/web dev
+
+2) API 주소 변경이 필요한 경우
+- 환경 변수 `SNAPSPACE_API_BASE_URL` 설정
+- 기본값: `http://localhost:8080/api/v1`
+
+예시:
+- SNAPSPACE_API_BASE_URL=http://localhost:8080/api/v1 pnpm --filter @snapspace/web dev
