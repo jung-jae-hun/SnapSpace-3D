@@ -55,9 +55,9 @@ export default function HomePage() {
     },
     {
       label: 'Sprint 3',
-      done: 0,
+      done: 1,
       total: 3,
-      note: 'arrange 엔진/3D preview 본 구현 대기'
+      note: 'arrange API 초안 반영, GeneratedObject/3D preview는 다음 단계'
     },
     {
       label: 'Sprint 4',

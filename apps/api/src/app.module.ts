@@ -6,6 +6,7 @@ import { PrismaModule } from './prisma/prisma.module';
 import { AssetsModule } from './assets/assets.module';
 import { ObjectDefinitionsModule } from './object-definitions/object-definitions.module';
 import { PlacedObjectsModule } from './placed-objects/placed-objects.module';
+import { ArrangeModule } from './arrange/arrange.module';
 
 @Module({
   imports: [
@@ -13,6 +14,7 @@ import { PlacedObjectsModule } from './placed-objects/placed-objects.module';
     AuthModule,
     ProjectsModule,
     ScenesModule,
+    ArrangeModule,
     AssetsModule,
     ObjectDefinitionsModule,
     PlacedObjectsModule

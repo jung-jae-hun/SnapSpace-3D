@@ -101,6 +101,24 @@ export default function SceneEditorPage() {
     }, 1200);
   }
 
+  async function runArrange(action: 'align-x' | 'align-z' | 'space-x' | 'snap-grid') {
+    setStatus(`arrange 실행 중: ${action}`);
+
+    const response = await fetch(`/api/scenes/${sceneId}/arrange`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action })
+    });
+
+    if (!response.ok) {
+      setStatus(`arrange 실패: ${action}`);
+      return;
+    }
+
+    await loadInitial();
+    setStatus(`arrange 완료: ${action}`);
+  }
+
   async function saveScene(nextPlacements: PlacedObject[]) {
     setSaving(true);
     setStatus('자동저장 중...');
@@ -295,6 +313,27 @@ export default function SceneEditorPage() {
               <span />
               <button className="btn btn-ghost" onClick={() => nudge(0, 0.5)}>
                 ↓
+              </button>
+            </div>
+          </div>
+
+          <div className="card" style={{ marginTop: 14 }}>
+            <p style={{ margin: 0, fontWeight: 700 }}>Arrange (초기)</p>
+            <p className="subtle" style={{ marginTop: 6 }}>
+              현재 배치 전체에 기본 정렬/스냅을 적용합니다.
+            </p>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button className="btn btn-ghost" onClick={() => void runArrange('align-x')}>
+                Align X
+              </button>
+              <button className="btn btn-ghost" onClick={() => void runArrange('align-z')}>
+                Align Z
+              </button>
+              <button className="btn btn-ghost" onClick={() => void runArrange('space-x')}>
+                Space X
+              </button>
+              <button className="btn btn-ghost" onClick={() => void runArrange('snap-grid')}>
+                Snap Grid
               </button>
             </div>
           </div>
