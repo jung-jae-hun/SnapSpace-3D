@@ -16,7 +16,8 @@
     "ci:test": "pnpm --filter @snapspace/api test",
     "ci:build": "pnpm --filter @snapspace/api build && pnpm --filter @snapspace/web build && pnpm --filter @snapspace/worker build",
     "ci:quality": "pnpm run ci:lint && pnpm run ci:typecheck && pnpm run ci:test && pnpm run ci:build",
-    "smoke:flow": "node scripts/smoke-flow.mjs"
+    "smoke:flow": "node scripts/smoke-flow.mjs",
+    "verify:onboarding": "bash scripts/verify-onboarding.sh"
   },
   "devDependencies": {
     "@types/node": "^25.6.0",

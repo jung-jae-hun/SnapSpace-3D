@@ -96,3 +96,18 @@ GitHub Actions 워크플로 파일:
 
 결과 GLB 파일은 기본적으로 아래에 저장됩니다.
 - .tmp/smoke
+
+## 8. 완료 정의 2번 온보딩 재현성 검증
+신규 개발자가 bootstrap 1회로 개발 환경을 재현할 수 있는지 아래 명령으로 점검합니다.
+
+실행:
+- pnpm run verify:onboarding
+
+검증 항목:
+- bootstrap 1회 실행
+- 품질게이트(lint/typecheck/test/build) 통과
+- 스모크 스크립트 문법 점검
+
+참고:
+- 실제 기능 흐름 검증은 인프라 기동 후 `pnpm run smoke:flow`로 수행
+- CI 워크플로: .github/workflows/onboarding-check.yml
