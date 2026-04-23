@@ -6,6 +6,8 @@
     "dev": "nest start --watch",
     "build": "nest build",
     "start": "node dist/main.js",
+    "test": "jest --runInBand",
+    "test:watch": "jest --watch",
     "lint": "eslint .",
     "prisma:generate": "prisma generate --schema prisma/schema.prisma",
     "prisma:migrate": "prisma migrate dev --schema prisma/schema.prisma",
@@ -30,7 +32,10 @@
   },
   "devDependencies": {
     "@nestjs/cli": "^11.0.21",
+    "@types/jest": "^30.0.0",
+    "jest": "^30.2.0",
     "prisma": "^6.19.3",
+    "ts-jest": "^29.4.5",
     "ts-node": "^10.9.2",
     "ts-node-dev": "^2.0.0"
   }
