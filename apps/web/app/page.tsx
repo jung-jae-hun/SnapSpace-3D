@@ -16,6 +16,13 @@ type Project = {
   createdAt?: string;
 };
 
+type ProgressStage = {
+  label: string;
+  done: number;
+  total: number;
+  note: string;
+};
+
 export default function HomePage() {
   const [email, setEmail] = useState('owner@snapspace.io');
   const [name, setName] = useState('Snap Owner');
@@ -26,6 +33,43 @@ export default function HomePage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
+
+  const progressStages: ProgressStage[] = [
+    {
+      label: '기반 세팅',
+      done: 6,
+      total: 6,
+      note: '모노레포, Docker Home 정책, 실행 스크립트까지 완료'
+    },
+    {
+      label: 'Sprint 1',
+      done: 4,
+      total: 4,
+      note: 'Auth/Project/Scene + OpenAPI + MinIO 업로드 기초 완료'
+    },
+    {
+      label: 'Sprint 2',
+      done: 2,
+      total: 4,
+      note: 'object/placement API는 완료, 캔버스/자동저장은 진행 필요'
+    },
+    {
+      label: 'Sprint 3',
+      done: 0,
+      total: 3,
+      note: 'arrange 엔진/3D preview 본 구현 대기'
+    },
+    {
+      label: 'Sprint 4',
+      done: 0,
+      total: 4,
+      note: 'export worker/GLB 다운로드/운영 안정화 대기'
+    }
+  ];
+
+  const doneTotal = progressStages.reduce((sum, stage) => sum + stage.done, 0);
+  const itemTotal = progressStages.reduce((sum, stage) => sum + stage.total, 0);
+  const overallPercent = Math.round((doneTotal / itemTotal) * 100);
 
   const loadMeAndProjects = useCallback(async () => {
     setLoading(true);
@@ -127,6 +171,51 @@ export default function HomePage() {
         <p className="subtle" style={{ marginTop: 12, marginBottom: 0 }}>
           JWT 토큰은 브라우저에서 직접 백엔드로 보내지지 않고, 웹 앱의 내부 API 라우트를 통해 안전하게 전달됩니다.
         </p>
+      </section>
+
+      <section className="panel" style={{ padding: 18, marginBottom: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+          <h2 style={{ margin: 0 }}>개발 진행 현황</h2>
+          <span className="label">계획 대비 {overallPercent}%</span>
+        </div>
+
+        <div
+          style={{
+            marginTop: 10,
+            width: '100%',
+            height: 10,
+            borderRadius: 999,
+            background: '#e8ebe6',
+            overflow: 'hidden'
+          }}
+        >
+          <div
+            style={{
+              width: `${overallPercent}%`,
+              height: '100%',
+              background: 'linear-gradient(90deg, #0a8f6a 0%, #5ebf8d 100%)'
+            }}
+          />
+        </div>
+
+        <div className="project-list" style={{ marginTop: 12 }}>
+          {progressStages.map((stage) => {
+            const stagePercent = Math.round((stage.done / stage.total) * 100);
+            return (
+              <article key={stage.label} className="project-item">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                  <strong>{stage.label}</strong>
+                  <span className="label">
+                    {stage.done}/{stage.total} ({stagePercent}%)
+                  </span>
+                </div>
+                <p className="subtle" style={{ margin: '6px 0 0' }}>
+                  {stage.note}
+                </p>
+              </article>
+            );
+          })}
+        </div>
       </section>
 
       <section className="grid">
