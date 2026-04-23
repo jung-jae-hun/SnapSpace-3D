@@ -49,9 +49,9 @@ export default function HomePage() {
     },
     {
       label: 'Sprint 2',
-      done: 2,
+      done: 4,
       total: 4,
-      note: 'object/placement API는 완료, 캔버스/자동저장은 진행 필요'
+      note: 'object/placement API + 카탈로그/배치 초기 UI + 자동저장/씬 로드 반영'
     },
     {
       label: 'Sprint 3',

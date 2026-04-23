@@ -466,6 +466,13 @@ export default function ProjectScenesPage() {
                     </p>
                   </div>
                   <div style={{ display: 'flex', gap: 8 }}>
+                    <Link
+                      href={`/scenes/${scene.id}/editor`}
+                      className="btn btn-ghost"
+                      style={{ display: 'inline-block' }}
+                    >
+                      에디터
+                    </Link>
                     {!scene.archivedAt ? (
                       <>
                         <button className="btn btn-ghost" onClick={() => void handleRenameScene(scene)}>
