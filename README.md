@@ -24,6 +24,10 @@
 Docker 실행 기준 폴더는 아래 경로를 사용합니다.
 - /Volumes/MartinData/SERVER/SnapSpace-3D
 
+중요 원칙:
+- 로컬 개발의 기본 실행 경로는 Docker입니다.
+- API/Worker를 호스트에서 직접 실행하는 방식은 기본 경로로 사용하지 않습니다.
+
 1) Docker Home 초기화
 - bash scripts/docker-home-init.sh
 
@@ -32,6 +36,12 @@ Docker 실행 기준 폴더는 아래 경로를 사용합니다.
 
 3) 개발 컨테이너 중지
 - bash scripts/docker-home-down.sh
+
+문제 해결:
+- `pnpm --filter @snapspace/api start`를 호스트에서 직접 실행하면,
+  `.env.example`의 기본값(`postgres`, `redis` 호스트명) 때문에 연결 실패가 발생할 수 있습니다.
+- 이 프로젝트의 기본 동작은 Docker 네트워크 기준이므로, API/Worker/DB/Redis/MinIO는 Docker로 기동하세요.
+- 호스트 직접 실행이 꼭 필요하면 `DATABASE_URL`, `REDIS_URL`, `S3_ENDPOINT`를 호스트 접근 가능 값으로 별도 오버라이드해야 합니다.
 
 상세 정책은 아래 문서를 참고하세요.
 - Doc/docker-home-policy.md
@@ -110,4 +120,5 @@ GitHub Actions 워크플로 파일:
 
 참고:
 - 실제 기능 흐름 검증은 인프라 기동 후 `pnpm run smoke:flow`로 수행
+- 권장 인프라 기동 순서: `bash scripts/docker-home-init.sh` -> `bash scripts/docker-home-up.sh`
 - CI 워크플로: .github/workflows/onboarding-check.yml

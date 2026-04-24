@@ -10,6 +10,16 @@ Docker 실행 관련 설정(.env)과 실행 기준 경로를 고정해서 운영
 1. Docker 실행은 항상 Docker Home 기준으로 수행한다.
 2. 환경 변수 파일은 Docker Home의 `.env`를 사용한다.
 3. 레포 루트에서 직접 `docker compose up`를 실행하지 않는다.
+4. 로컬 기본 실행은 Docker 네트워크 기준으로 고정한다.
+5. `pnpm --filter @snapspace/api start` 같은 호스트 직접 실행은 기본 경로가 아니다.
+
+### 3.1 호스트 직접 실행 관련 주의
+- `.env.example`의 기본 연결값은 Docker 서비스명(`postgres`, `redis`) 기준이다.
+- 따라서 호스트에서 API를 직접 실행하면 DB/Redis DNS 해석 실패가 발생할 수 있다.
+- 호스트 실행이 필요한 경우에만 아래 값을 로컬 주소로 오버라이드한다.
+	- `DATABASE_URL` (예: localhost:5432)
+	- `REDIS_URL` (예: localhost:6379)
+	- `S3_ENDPOINT` (예: localhost:9000)
 
 ## 4. 실행 절차
 1. 초기화
