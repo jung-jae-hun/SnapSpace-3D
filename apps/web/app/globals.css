@@ -114,61 +114,6 @@ main {
   flex-wrap: wrap;
 }
 
-.nav-item {
-  border: none;
-  background: transparent;
-  color: #374151;
-  padding: 8px 10px;
-  border-radius: 8px;
-  font-weight: 600;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  transition: color 0.15s ease, background-color 0.15s ease;
-}
-
-.nav-icon {
-  min-width: 22px;
-  height: 18px;
-  border-radius: 5px;
-  border: 1px solid #d4dbe6;
-  background: #fff;
-  color: #5a6677;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 10px;
-  letter-spacing: 0.02em;
-}
-
-.nav-item:hover {
-  color: #111827;
-  background: #eef2f7;
-}
-
-.nav-item.active {
-  color: var(--brand);
-  background: color-mix(in oklab, var(--brand-soft) 44%, white 56%);
-}
-
-.nav-item.active .nav-icon {
-  border-color: color-mix(in oklab, var(--brand) 45%, #d4dbe6 55%);
-  color: var(--brand);
-}
-
-.density-switch {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.density-switch .btn.is-active {
-  border-color: color-mix(in oklab, var(--brand) 45%, #cfd6e2 55%);
-  background: color-mix(in oklab, var(--brand-soft) 35%, white 65%);
-  color: var(--brand-strong);
-}
-
 .content-layout {
   display: grid;
   grid-template-columns: minmax(260px, 340px) minmax(0, 1fr);
