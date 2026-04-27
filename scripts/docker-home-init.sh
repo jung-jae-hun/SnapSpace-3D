@@ -2,7 +2,7 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-DOCKER_HOME="${SNAPSPACE_DOCKER_HOME:-/Volumes/MartinData/SERVER/SnapSpace-3D}"
+DOCKER_HOME="${SNAPSPACE_DOCKER_HOME:-$REPO_ROOT}"
 
 mkdir -p "$DOCKER_HOME"
 
@@ -18,7 +18,7 @@ cat > "$DOCKER_HOME/README.md" <<EOF
 
 이 폴더는 SnapSpace 3D Docker 실행 기준 폴더입니다.
 
-- 기본 경로: /Volumes/MartinData/SERVER/SnapSpace-3D
+- 기본 경로: 레포 루트($REPO_ROOT)
 - 이 폴더의 .env를 기준으로 Docker 실행
 
 실행 예시:

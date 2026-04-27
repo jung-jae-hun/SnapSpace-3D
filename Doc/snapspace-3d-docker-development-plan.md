@@ -58,8 +58,8 @@
 3. prod: immutable image, read-only rootfs(가능 범위), 최소 권한 실행
 
 ## 3.4 Docker 실행 기준 경로 정책
-1. Docker Home 경로는 `/Volumes/MartinData/SERVER/SnapSpace-3D`로 고정
-2. Docker 관련 실행은 Docker Home 기준 스크립트로만 수행
+1. Docker Home 기본 경로는 프로젝트 루트로 설정
+2. Docker 관련 실행은 `scripts/docker-home-*.sh` 기준으로 수행
 3. 실행 스크립트:
   - `bash scripts/docker-home-init.sh`
   - `bash scripts/docker-home-up.sh`

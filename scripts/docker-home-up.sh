@@ -2,7 +2,7 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-DOCKER_HOME="${SNAPSPACE_DOCKER_HOME:-/Volumes/MartinData/SERVER/SnapSpace-3D}"
+DOCKER_HOME="${SNAPSPACE_DOCKER_HOME:-$REPO_ROOT}"
 COMPOSE_FILE="$REPO_ROOT/infra/compose/docker-compose.dev.yml"
 
 if [[ ! -f "$DOCKER_HOME/.env" ]]; then

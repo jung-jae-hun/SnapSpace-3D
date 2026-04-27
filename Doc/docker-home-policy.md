@@ -3,13 +3,14 @@
 ## 1. 목적
 Docker 실행 관련 설정(.env)과 실행 기준 경로를 고정해서 운영 혼선을 줄인다.
 
-## 2. 고정 경로
-- Docker Home: `/Volumes/MartinData/SERVER/SnapSpace-3D`
+## 2. 기본 경로
+- Docker Home 기본값: 프로젝트 루트
+- 필요 시 `SNAPSPACE_DOCKER_HOME`으로 다른 경로를 지정할 수 있다.
 
 ## 3. 운영 원칙
 1. Docker 실행은 항상 Docker Home 기준으로 수행한다.
 2. 환경 변수 파일은 Docker Home의 `.env`를 사용한다.
-3. 레포 루트에서 직접 `docker compose up`를 실행하지 않는다.
+3. 실행 일관성을 위해 `scripts/docker-home-*.sh` 스크립트를 우선 사용한다.
 4. 로컬 기본 실행은 Docker 네트워크 기준으로 고정한다.
 5. `pnpm --filter @snapspace/api start` 같은 호스트 직접 실행은 기본 경로가 아니다.
 
