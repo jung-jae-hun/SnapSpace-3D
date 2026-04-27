@@ -22,46 +22,31 @@ export default function HomePage() {
     return Number.isNaN(ts) ? 0 : ts;
   }
 
-  async function ensureWorkspaceSceneId(): Promise<string> {
-    const projectsRes = await fetch('/api/projects', { cache: 'no-store' });
-    if (!projectsRes.ok) {
-      throw new Error('프로젝트 목록 조회 실패');
+  async function createWorkspaceProject(): Promise<Project> {
+    const createProjectRes = await fetch('/api/projects', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Workspace Demo',
+        description: 'Auto-created workspace'
+      })
+    });
+
+    if (!createProjectRes.ok) {
+      throw new Error('프로젝트 자동 생성 실패');
     }
 
-    const projects = (await projectsRes.json()) as Array<
-      Project & { createdAt?: string; updatedAt?: string }
-    >;
+    return (await createProjectRes.json()) as Project;
+  }
 
-    let projectId: string;
-    if (projects.length > 0) {
-      const latestProject = [...projects].sort((a, b) => {
-        const aTime = toEpoch(a.updatedAt) || toEpoch(a.createdAt);
-        const bTime = toEpoch(b.updatedAt) || toEpoch(b.createdAt);
-        return bTime - aTime;
-      })[0];
-
-      projectId = latestProject.id;
-    } else {
-      const createProjectRes = await fetch('/api/projects', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: 'Workspace Demo',
-          description: 'Auto-created workspace'
-        })
-      });
-
-      if (!createProjectRes.ok) {
-        throw new Error('프로젝트 자동 생성 실패');
-      }
-
-      const created = (await createProjectRes.json()) as Project;
-      projectId = created.id;
-    }
-
+  async function ensureSceneForProject(projectId: string): Promise<string | null> {
     const scenesRes = await fetch(`/api/projects/${projectId}/scenes?includeArchived=0`, {
       cache: 'no-store'
     });
+
+    if (scenesRes.status === 404) {
+      return null;
+    }
 
     if (!scenesRes.ok) {
       throw new Error('씬 목록 조회 실패');
@@ -77,6 +62,7 @@ export default function HomePage() {
         const bTime = toEpoch(b.updatedAt) || toEpoch(b.createdAt);
         return bTime - aTime;
       })[0];
+
     if (active) {
       return active.id;
     }
@@ -93,6 +79,37 @@ export default function HomePage() {
 
     const createdScene = (await createSceneRes.json()) as Scene;
     return createdScene.id;
+  }
+
+  async function ensureWorkspaceSceneId(): Promise<string> {
+    const projectsRes = await fetch('/api/projects', { cache: 'no-store' });
+    if (!projectsRes.ok) {
+      throw new Error('프로젝트 목록 조회 실패');
+    }
+
+    const projects = (await projectsRes.json()) as Array<
+      Project & { createdAt?: string; updatedAt?: string }
+    >;
+
+    const orderedProjects = [...projects].sort((a, b) => {
+      const aTime = toEpoch(a.updatedAt) || toEpoch(a.createdAt);
+      const bTime = toEpoch(b.updatedAt) || toEpoch(b.createdAt);
+      return bTime - aTime;
+    });
+
+    for (const project of orderedProjects) {
+      const sceneId = await ensureSceneForProject(project.id);
+      if (sceneId) {
+        return sceneId;
+      }
+    }
+
+    const createdProject = await createWorkspaceProject();
+    const createdSceneId = await ensureSceneForProject(createdProject.id);
+    if (!createdSceneId) {
+      throw new Error('씬 자동 생성 실패');
+    }
+    return createdSceneId;
   }
 
   async function handleLogin(event: FormEvent<HTMLFormElement>) {
