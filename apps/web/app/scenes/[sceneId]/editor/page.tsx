@@ -391,7 +391,7 @@ export default function SceneEditorPage() {
       return;
     }
 
-    setStatus('Generate 요청 중...');
+    setStatus('3D 생성 요청 중...');
 
     let response: Response;
     try {
@@ -399,7 +399,7 @@ export default function SceneEditorPage() {
         method: 'POST'
       });
     } catch {
-      setStatus('네트워크 오류로 Generate 요청에 실패했습니다.');
+      setStatus('네트워크 오류로 3D 생성 요청에 실패했습니다.');
       return;
     }
 
@@ -412,12 +412,12 @@ export default function SceneEditorPage() {
 
     if (!response.ok) {
       const message = await readErrorMessage(response);
-      setStatus(message ?? 'Generate 요청에 실패했습니다.');
+      setStatus(message ?? '3D 생성 요청에 실패했습니다.');
       return;
     }
 
     await loadInitial();
-    setStatus('Generate 완료');
+    setStatus('3D 생성 완료');
   }
 
   async function runExport() {
@@ -426,7 +426,7 @@ export default function SceneEditorPage() {
       return;
     }
 
-    setStatus('Export 요청 중...');
+    setStatus('GLB 내보내기 요청 중...');
 
     let response: Response;
     try {
@@ -436,7 +436,7 @@ export default function SceneEditorPage() {
         body: JSON.stringify({ format: 'glb' })
       });
     } catch {
-      setStatus('네트워크 오류로 Export 요청에 실패했습니다.');
+      setStatus('네트워크 오류로 GLB 내보내기 요청에 실패했습니다.');
       return;
     }
 
@@ -449,12 +449,12 @@ export default function SceneEditorPage() {
 
     if (!response.ok) {
       const message = await readErrorMessage(response);
-      setStatus(message ?? 'Export 요청에 실패했습니다.');
+      setStatus(message ?? 'GLB 내보내기 요청에 실패했습니다.');
       return;
     }
 
     await loadInitial();
-    setStatus('Export 완료');
+    setStatus('GLB 내보내기 완료');
   }
 
   function downloadExport(exportId: string) {
@@ -843,7 +843,7 @@ export default function SceneEditorPage() {
           </span>
           <button className="btn btn-outline-secondary btn-sm toolbar-icon-btn" onClick={() => void runGenerate()}>
             <i className="bi bi-magic me-1" aria-hidden="true" />
-            <span className="d-none d-md-inline">Generate</span>
+            <span className="d-none d-md-inline">3D 생성</span>
           </button>
         </div>
       </header>
@@ -939,7 +939,7 @@ export default function SceneEditorPage() {
           </div>
           <button className="btn btn-primary btn-sm toolbar-icon-btn" onClick={() => void runExport()}>
             <i className="bi bi-download me-1" aria-hidden="true" />
-            <span className="d-none d-md-inline">Export GLB</span>
+            <span className="d-none d-md-inline">GLB 내보내기</span>
           </button>
         </div>
       </nav>
