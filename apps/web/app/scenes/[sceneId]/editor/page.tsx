@@ -78,6 +78,7 @@ export default function SceneEditorPage() {
   const [dragging, setDragging] = useState(false);
   const [saveNotice, setSaveNotice] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [sidebarTab, setSidebarTab] = useState<'placed' | 'catalog'>('placed');
   const [lastSavedPlacements, setLastSavedPlacements] = useState<PlacedObject[]>([]);
   const [hasSavedSnapshot, setHasSavedSnapshot] = useState(false);
 
@@ -965,94 +966,119 @@ export default function SceneEditorPage() {
 
       <section className="content-layout">
         <aside>
-          <h2 style={{ marginTop: 0, marginBottom: 10 }}>등록 오브젝트</h2>
-          <div className="sidebar-list">
-            {placements.length === 0 ? (
-              <p className="subtle" style={{ margin: 0, padding: '8px 0' }}>
-                배치된 오브젝트가 없습니다.
-              </p>
-            ) : (
-              placements.map((item, idx) => {
-                const def = catalogById.get(item.objectDefinitionId);
-                const active = idx === activeIndex;
-
-                return (
-                  <div
-                    key={`${item.id ?? 'new'}-${idx}`}
-                    className={`list-row ${active ? 'active' : ''}`}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-                      <div>
-                        <strong style={{ fontSize: 14 }}>{item.name || def?.name || '이름 없음'}</strong>
-                        <p className="subtle" style={{ margin: '6px 0 0' }}>
-                          x: {item.position.x} / z: {item.position.z}
-                        </p>
-                      </div>
-                      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                        <button className="btn btn-outline-secondary btn-sm" onClick={() => setActiveIndex(idx)}>
-                          선택
-                        </button>
-                        <button className="btn btn-outline-secondary btn-sm" onClick={() => removeAt(idx)}>
-                          삭제
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
-
-          <div style={{ marginTop: 18 }}>
-            <p style={{ margin: '0 0 8px', fontWeight: 700 }}>오브젝트 추가</p>
-            <input
-              className="form-control form-control-sm"
-              placeholder="이름/코드/카테고리 검색"
-              value={catalogQuery}
-              onChange={(e) => setCatalogQuery(e.target.value)}
-              aria-label="카탈로그 검색"
-            />
-            <select
-              className="form-select form-select-sm"
-              value={catalogCategory}
-              onChange={(e) => setCatalogCategory(e.target.value)}
-              aria-label="카테고리 필터"
-              style={{ marginTop: 8 }}
+          <div className="btn-group btn-group-sm" role="tablist" aria-label="오브젝트 패널 탭" style={{ marginBottom: 10 }}>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={sidebarTab === 'placed'}
+              className={`btn ${sidebarTab === 'placed' ? 'btn-primary' : 'btn-outline-secondary'}`}
+              onClick={() => setSidebarTab('placed')}
             >
-              <option value="all">전체 카테고리</option>
-              {catalogCategories.map((category) => (
-                <option key={category} value={category}>
-                  {category}
-                </option>
-              ))}
-            </select>
-            <p className="subtle" style={{ margin: '8px 0 10px' }}>
-              {filteredCatalog.length} / {catalog.length} 표시 중
-            </p>
-            <div style={{ display: 'grid', gap: 8, maxHeight: 280, overflow: 'auto' }}>
-              {filteredCatalog.length === 0 ? (
-                <p className="subtle" style={{ margin: 0, padding: '8px 0' }}>
-                  검색 결과가 없습니다.
-                </p>
-              ) : (
-                filteredCatalog.map((def) => (
-                  <div key={def.id} className="list-row">
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-                      <div>
-                        <strong style={{ fontSize: 14 }}>{def.name}</strong>
-                        <p className="subtle" style={{ margin: '4px 0 0' }}>
-                          {def.category} / {def.code}
-                        </p>
-                      </div>
-                      <button className="btn btn-primary btn-sm" onClick={() => addFromCatalog(def)}>
-                        추가
-                      </button>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
+              등록 오브젝트
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={sidebarTab === 'catalog'}
+              className={`btn ${sidebarTab === 'catalog' ? 'btn-primary' : 'btn-outline-secondary'}`}
+              onClick={() => setSidebarTab('catalog')}
+            >
+              오브젝트 추가
+            </button>
           </div>
+
+          {sidebarTab === 'placed' ? (
+            <>
+              <h2 style={{ marginTop: 0, marginBottom: 10 }}>등록 오브젝트</h2>
+              <div className="sidebar-list">
+                {placements.length === 0 ? (
+                  <p className="subtle" style={{ margin: 0, padding: '8px 0' }}>
+                    배치된 오브젝트가 없습니다.
+                  </p>
+                ) : (
+                  placements.map((item, idx) => {
+                    const def = catalogById.get(item.objectDefinitionId);
+                    const active = idx === activeIndex;
+
+                    return (
+                      <div
+                        key={`${item.id ?? 'new'}-${idx}`}
+                        className={`list-row ${active ? 'active' : ''}`}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                          <div>
+                            <strong style={{ fontSize: 14 }}>{item.name || def?.name || '이름 없음'}</strong>
+                            <p className="subtle" style={{ margin: '6px 0 0' }}>
+                              x: {item.position.x} / z: {item.position.z}
+                            </p>
+                          </div>
+                          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                            <button className="btn btn-outline-secondary btn-sm" onClick={() => setActiveIndex(idx)}>
+                              선택
+                            </button>
+                            <button className="btn btn-outline-secondary btn-sm" onClick={() => removeAt(idx)}>
+                              삭제
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </>
+          ) : (
+            <>
+              <h2 style={{ marginTop: 0, marginBottom: 10 }}>오브젝트 추가</h2>
+              <input
+                className="form-control form-control-sm"
+                placeholder="이름/코드/카테고리 검색"
+                value={catalogQuery}
+                onChange={(e) => setCatalogQuery(e.target.value)}
+                aria-label="카탈로그 검색"
+              />
+              <select
+                className="form-select form-select-sm"
+                value={catalogCategory}
+                onChange={(e) => setCatalogCategory(e.target.value)}
+                aria-label="카테고리 필터"
+                style={{ marginTop: 8 }}
+              >
+                <option value="all">전체 카테고리</option>
+                {catalogCategories.map((category) => (
+                  <option key={category} value={category}>
+                    {category}
+                  </option>
+                ))}
+              </select>
+              <p className="subtle" style={{ margin: '8px 0 10px' }}>
+                {filteredCatalog.length} / {catalog.length} 표시 중
+              </p>
+              <div style={{ display: 'grid', gap: 8, maxHeight: 420, overflow: 'auto' }}>
+                {filteredCatalog.length === 0 ? (
+                  <p className="subtle" style={{ margin: 0, padding: '8px 0' }}>
+                    검색 결과가 없습니다.
+                  </p>
+                ) : (
+                  filteredCatalog.map((def) => (
+                    <div key={def.id} className="list-row">
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                        <div>
+                          <strong style={{ fontSize: 14 }}>{def.name}</strong>
+                          <p className="subtle" style={{ margin: '4px 0 0' }}>
+                            {def.category} / {def.code}
+                          </p>
+                        </div>
+                        <button className="btn btn-primary btn-sm" onClick={() => addFromCatalog(def)}>
+                          추가
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </>
+          )}
         </aside>
 
         <section id="layout-2d" style={{ minWidth: 0 }}>
