@@ -45,3 +45,13 @@ bash /Volumes/MartinData/dev-project/querensys/SnapSpace 3D/scripts/local-web-up
 ```bash
 bash /Volumes/MartinData/dev-project/querensys/SnapSpace 3D/scripts/verify-runtime.sh
 ```
+
+옵션 예시:
+
+```bash
+bash /Volumes/MartinData/dev-project/querensys/SnapSpace 3D/scripts/verify-runtime.sh \
+  --web-port 3300 \
+  --api-port 8080 \
+  --email owner@snapspace.io \
+  --name "Snap Owner"
+```
