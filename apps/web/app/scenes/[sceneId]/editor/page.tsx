@@ -849,7 +849,6 @@ export default function SceneEditorPage() {
             {saving ? '저장 중...' : status}
           </span>
           <button className="btn btn-outline-secondary btn-sm toolbar-icon-btn" onClick={() => void runGenerate()}>
-            <i className="bi bi-magic me-1" aria-hidden="true" />
             <span className="d-none d-md-inline">3D 생성</span>
           </button>
         </div>
@@ -858,23 +857,18 @@ export default function SceneEditorPage() {
       <nav id="arrange-tools" className="top-nav" aria-label="편집기 주 메뉴">
         <div className="menu-links">
           <Link href="/" className="btn btn-outline-secondary btn-sm toolbar-icon-btn" title="홈으로" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            <i className="bi bi-house" aria-hidden="true" />
             <span className="d-none d-md-inline">홈</span>
           </Link>
           <button className="btn btn-outline-secondary btn-sm toolbar-icon-btn" title="X 정렬" onClick={() => void runArrange('align-x')}>
-            <i className="bi bi-distribute-horizontal" aria-hidden="true" />
             <span className="d-none d-md-inline">X축 정렬</span>
           </button>
           <button className="btn btn-outline-secondary btn-sm toolbar-icon-btn" title="격자 정렬" onClick={() => void runArrange('snap-grid')}>
-            <i className="bi bi-grid-3x3-gap" aria-hidden="true" />
             <span className="d-none d-md-inline">격자 정렬</span>
           </button>
           <button className="btn btn-outline-secondary btn-sm toolbar-icon-btn" title="Z 정렬" onClick={() => void runArrange('align-z')}>
-            <i className="bi bi-distribute-vertical" aria-hidden="true" />
             <span className="d-none d-md-inline">Z축 정렬</span>
           </button>
           <button className="btn btn-outline-secondary btn-sm toolbar-icon-btn" title="3D 미리보기" onClick={() => setShowPreviewModal(true)}>
-            <i className="bi bi-badge-3d" aria-hidden="true" />
             <span className="d-none d-md-inline">3D 보기</span>
           </button>
         </div>
@@ -903,7 +897,6 @@ export default function SceneEditorPage() {
             className={`btn btn-sm ${snapToGrid ? 'btn-primary' : 'btn-outline-secondary'}`}
             onClick={() => setSnapToGrid((prev) => !prev)}
           >
-            <i className="bi bi-magnet me-1" aria-hidden="true" />
             스냅 {snapToGrid ? '켜짐' : '꺼짐'}
           </button>
           {snapToGrid ? (
@@ -933,19 +926,16 @@ export default function SceneEditorPage() {
               className={`btn ${density === 'cozy' ? 'btn-primary' : 'btn-outline-secondary'}`}
               onClick={() => setDensity('cozy')}
             >
-              <i className="bi bi-arrows-collapse-vertical me-1" aria-hidden="true" />
               <span className="d-none d-md-inline">넓게</span>
             </button>
             <button
               className={`btn ${density === 'compact' ? 'btn-primary' : 'btn-outline-secondary'}`}
               onClick={() => setDensity('compact')}
             >
-              <i className="bi bi-distribute-vertical me-1" aria-hidden="true" />
               <span className="d-none d-md-inline">촘촘히</span>
             </button>
           </div>
           <button className="btn btn-primary btn-sm toolbar-icon-btn" onClick={() => void runExport()}>
-            <i className="bi bi-download me-1" aria-hidden="true" />
             <span className="d-none d-md-inline">GLB 내보내기</span>
           </button>
         </div>
@@ -963,11 +953,9 @@ export default function SceneEditorPage() {
             <span>{saveError}</span>
             <div style={{ display: 'flex', gap: 8 }}>
               <button className="btn btn-outline-secondary btn-sm" onClick={() => void retrySaveNow()}>
-                <i className="bi bi-arrow-repeat me-1" aria-hidden="true" />
                 저장 재시도
               </button>
               <button className="btn btn-outline-secondary btn-sm" onClick={rollbackPlacements} disabled={!hasSavedSnapshot}>
-                <i className="bi bi-arrow-counterclockwise me-1" aria-hidden="true" />
                 마지막 저장으로 되돌리기
               </button>
             </div>
@@ -1002,11 +990,9 @@ export default function SceneEditorPage() {
                       </div>
                       <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                         <button className="btn btn-outline-secondary btn-sm" onClick={() => setActiveIndex(idx)}>
-                          <i className="bi bi-cursor-fill me-1" aria-hidden="true" />
                           선택
                         </button>
                         <button className="btn btn-outline-secondary btn-sm" onClick={() => removeAt(idx)}>
-                          <i className="bi bi-trash3 me-1" aria-hidden="true" />
                           삭제
                         </button>
                       </div>
@@ -1059,7 +1045,6 @@ export default function SceneEditorPage() {
                         </p>
                       </div>
                       <button className="btn btn-primary btn-sm" onClick={() => addFromCatalog(def)}>
-                        <i className="bi bi-plus-lg me-1" aria-hidden="true" />
                         추가
                       </button>
                     </div>
@@ -1208,7 +1193,6 @@ export default function SceneEditorPage() {
                     onClick={() => downloadExport(item.id)}
                     disabled={item.status !== 'succeeded'}
                   >
-                    <i className="bi bi-download me-1" aria-hidden="true" />
                     다운로드
                   </button>
                 </div>
@@ -1249,7 +1233,6 @@ export default function SceneEditorPage() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
               <h3 style={{ margin: 0 }}>3D 미리보기</h3>
               <button className="btn btn-outline-secondary btn-sm" onClick={() => setShowPreviewModal(false)}>
-                <i className="bi bi-x-lg me-1" aria-hidden="true" />
                 닫기
               </button>
             </div>
