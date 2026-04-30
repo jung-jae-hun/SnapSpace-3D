@@ -856,19 +856,19 @@ export default function SceneEditorPage() {
           </Link>
           <button className="btn btn-outline-secondary btn-sm toolbar-icon-btn" title="X 정렬" onClick={() => void runArrange('align-x')}>
             <i className="bi bi-distribute-horizontal" aria-hidden="true" />
-            <span className="d-none d-md-inline">Align X</span>
+            <span className="d-none d-md-inline">X축 정렬</span>
           </button>
           <button className="btn btn-outline-secondary btn-sm toolbar-icon-btn" title="격자 정렬" onClick={() => void runArrange('snap-grid')}>
             <i className="bi bi-grid-3x3-gap" aria-hidden="true" />
-            <span className="d-none d-md-inline">Arrange</span>
+            <span className="d-none d-md-inline">격자 정렬</span>
           </button>
           <button className="btn btn-outline-secondary btn-sm toolbar-icon-btn" title="Z 정렬" onClick={() => void runArrange('align-z')}>
             <i className="bi bi-distribute-vertical" aria-hidden="true" />
-            <span className="d-none d-md-inline">Align Z</span>
+            <span className="d-none d-md-inline">Z축 정렬</span>
           </button>
           <button className="btn btn-outline-secondary btn-sm toolbar-icon-btn" title="3D 미리보기" onClick={() => setShowPreviewModal(true)}>
             <i className="bi bi-badge-3d" aria-hidden="true" />
-            <span className="d-none d-md-inline">3Dview</span>
+            <span className="d-none d-md-inline">3D 보기</span>
           </button>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
