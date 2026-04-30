@@ -369,19 +369,33 @@ export default function SceneEditorPage() {
       return;
     }
 
-    setStatus('generate 실행 중...');
+    setStatus('Generate 요청 중...');
 
-    const response = await fetch(`/api/scenes/${sceneId}/generate`, {
-      method: 'POST'
-    });
+    let response: Response;
+    try {
+      response = await fetch(`/api/scenes/${sceneId}/generate`, {
+        method: 'POST'
+      });
+    } catch {
+      setStatus('네트워크 오류로 Generate 요청에 실패했습니다.');
+      return;
+    }
+
+    if (response.status === 401) {
+      setSceneAvailable(false);
+      setStatus('세션이 만료되었습니다. 다시 로그인해 주세요.');
+      router.replace('/');
+      return;
+    }
 
     if (!response.ok) {
-      setStatus('generate 실패');
+      const message = await readErrorMessage(response);
+      setStatus(message ?? 'Generate 요청에 실패했습니다.');
       return;
     }
 
     await loadInitial();
-    setStatus('generate 완료');
+    setStatus('Generate 완료');
   }
 
   async function runExport() {
@@ -390,21 +404,35 @@ export default function SceneEditorPage() {
       return;
     }
 
-    setStatus('export job 생성 중...');
+    setStatus('Export 요청 중...');
 
-    const response = await fetch(`/api/scenes/${sceneId}/exports`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ format: 'glb' })
-    });
+    let response: Response;
+    try {
+      response = await fetch(`/api/scenes/${sceneId}/exports`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ format: 'glb' })
+      });
+    } catch {
+      setStatus('네트워크 오류로 Export 요청에 실패했습니다.');
+      return;
+    }
+
+    if (response.status === 401) {
+      setSceneAvailable(false);
+      setStatus('세션이 만료되었습니다. 다시 로그인해 주세요.');
+      router.replace('/');
+      return;
+    }
 
     if (!response.ok) {
-      setStatus('export 생성 실패');
+      const message = await readErrorMessage(response);
+      setStatus(message ?? 'Export 요청에 실패했습니다.');
       return;
     }
 
     await loadInitial();
-    setStatus('export job 생성 완료');
+    setStatus('Export 완료');
   }
 
   function downloadExport(exportId: string) {
