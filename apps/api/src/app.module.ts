@@ -8,6 +8,7 @@ import { ObjectDefinitionsModule } from './object-definitions/object-definitions
 import { PlacedObjectsModule } from './placed-objects/placed-objects.module';
 import { ArrangeModule } from './arrange/arrange.module';
 import { ExportsModule } from './exports/exports.module';
+import { HealthController } from './health.controller';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { ExportsModule } from './exports/exports.module';
     AssetsModule,
     ObjectDefinitionsModule,
     PlacedObjectsModule
-  ]
+  ],
+  controllers: [HealthController]
 })
 export class AppModule {}
