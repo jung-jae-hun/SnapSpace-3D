@@ -8,17 +8,8 @@ function rewriteUploadUrlForBrowser(rawUrl?: string) {
   }
 
   try {
-    const parsed = new URL(rawUrl);
-    if (parsed.hostname !== 'minio') {
-      return rawUrl;
-    }
-
-    parsed.hostname = process.env.MINIO_PUBLIC_ENDPOINT ?? 'localhost';
-    if (process.env.MINIO_PUBLIC_PORT) {
-      parsed.port = process.env.MINIO_PUBLIC_PORT;
-    }
-
-    return parsed.toString();
+    const encodedTarget = encodeURIComponent(rawUrl);
+    return `/api/assets/upload-proxy?target=${encodedTarget}`;
   } catch {
     return rawUrl;
   }
