@@ -9,6 +9,7 @@ import { PlacedObjectsModule } from './placed-objects/placed-objects.module';
 import { ArrangeModule } from './arrange/arrange.module';
 import { ExportsModule } from './exports/exports.module';
 import { HealthController } from './health.controller';
+import { AiGenerationsModule } from './ai/ai-generations.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { HealthController } from './health.controller';
     ScenesModule,
     ArrangeModule,
     ExportsModule,
+    AiGenerationsModule,
     AssetsModule,
     ObjectDefinitionsModule,
     PlacedObjectsModule

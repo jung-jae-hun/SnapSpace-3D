@@ -46,11 +46,60 @@ export MINIO_ENDPOINT="${MINIO_ENDPOINT_OVERRIDE:-localhost}"
 
 cd "$REPO_ROOT"
 
+if ! pnpm --filter @snapspace/api exec node -e "require.resolve('@nestjs/core')" >/dev/null 2>&1; then
+  echo "[local-api-up] Missing API dependencies (@nestjs/core not found)."
+  echo "[local-api-up] Run: pnpm install"
+  exit 1
+fi
+
 echo "[local-api-up] API_CMD=$API_CMD API_PORT=$API_PORT"
 echo "[local-api-up] DATABASE_URL=$DATABASE_URL"
 echo "[local-api-up] REDIS_URL=$REDIS_URL MINIO_ENDPOINT=$MINIO_ENDPOINT"
 
+port_in_use=false
+if lsof -iTCP:"$API_PORT" -sTCP:LISTEN -n -P >/dev/null 2>&1; then
+  port_in_use=true
+fi
+
 if [[ "$API_CMD" == "smoke" ]]; then
+  if [[ "$port_in_use" == true ]]; then
+    echo "[local-api-up] Port $API_PORT is already in use."
+    lsof -iTCP:"$API_PORT" -sTCP:LISTEN -n -P | sed 's/^/[local-api-up] /'
+    echo "[local-api-up] Smoke: validating existing API instance"
+
+    HEALTH_OUT="$(mktemp)"
+    LOGIN_OUT="$(mktemp)"
+    trap 'rm -f "$HEALTH_OUT" "$LOGIN_OUT"' EXIT INT TERM
+
+    HEALTH_URL="http://localhost:${API_PORT}/api/v1/health"
+    HEALTH_CODE="$(curl --retry 10 --retry-all-errors --retry-delay 1 -sS -o "$HEALTH_OUT" -w '%{http_code}' "$HEALTH_URL" || true)"
+    if [[ "$HEALTH_CODE" != "200" ]]; then
+      echo "[local-api-up] Smoke failed: health code=$HEALTH_CODE"
+      cat "$HEALTH_OUT" || true
+      exit 1
+    fi
+
+    LOGIN_URL="http://localhost:${API_PORT}/api/v1/auth/login"
+    LOGIN_CODE="$(curl --retry 5 --retry-all-errors --retry-delay 1 -sS -o "$LOGIN_OUT" -w '%{http_code}' \
+      -X POST "$LOGIN_URL" \
+      -H 'Content-Type: application/json' \
+      --data '{"email":"owner@snapspace.io","name":"Snap Owner"}' || true)"
+    if [[ "$LOGIN_CODE" != "200" && "$LOGIN_CODE" != "201" ]]; then
+      echo "[local-api-up] Smoke failed: login code=$LOGIN_CODE"
+      cat "$LOGIN_OUT" || true
+      exit 1
+    fi
+
+    echo "[local-api-up] Smoke passed (existing API instance)"
+    echo "[local-api-up] Health response:"
+    cat "$HEALTH_OUT"
+    echo
+    echo "[local-api-up] Login response:"
+    cat "$LOGIN_OUT"
+    echo
+    exit 0
+  fi
+
   HEALTH_OUT="$(mktemp)"
   LOGIN_OUT="$(mktemp)"
   SERVER_LOG="$(mktemp)"
@@ -102,6 +151,12 @@ if [[ "$API_CMD" == "smoke" ]]; then
   cat "$LOGIN_OUT"
   echo
   exit 0
+fi
+
+if [[ "$port_in_use" == true ]]; then
+  echo "[local-api-up] Port $API_PORT is already in use."
+  lsof -iTCP:"$API_PORT" -sTCP:LISTEN -n -P | sed 's/^/[local-api-up] /'
+  exit 1
 fi
 
 pnpm --filter @snapspace/api "$API_CMD"

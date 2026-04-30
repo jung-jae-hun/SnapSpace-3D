@@ -53,6 +53,36 @@ type SceneExport = {
   lastError?: string;
 };
 
+type AiGenerationStatus = 'queued' | 'running' | 'post_processing' | 'ready' | 'failed';
+
+type AiGeneratedAssetSummary = {
+  id: string;
+  glbAssetId: string;
+  objAssetId?: string | null;
+  previewImageAssetId?: string | null;
+};
+
+type AiGenerationJob = {
+  id: string;
+  status: AiGenerationStatus;
+  progress: number;
+  errorMessage?: string | null;
+  sourceImageAssetId: string;
+  generatedAsset?: AiGeneratedAssetSummary | null;
+};
+
+type AiLogLevel = 'info' | 'warn' | 'error';
+
+type AiLogCategory = 'poll' | 'upload' | 'promote' | 'system';
+
+type AiLogEntry = {
+  id: string;
+  time: string;
+  level: AiLogLevel;
+  category: AiLogCategory;
+  message: string;
+};
+
 export default function SceneEditorPage() {
   const params = useParams<{ sceneId: string }>();
   const router = useRouter();
@@ -81,6 +111,27 @@ export default function SceneEditorPage() {
   const [sidebarTab, setSidebarTab] = useState<'placed' | 'catalog'>('placed');
   const [lastSavedPlacements, setLastSavedPlacements] = useState<PlacedObject[]>([]);
   const [hasSavedSnapshot, setHasSavedSnapshot] = useState(false);
+  const [aiSourceFile, setAiSourceFile] = useState<File | null>(null);
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [aiCreating, setAiCreating] = useState(false);
+  const [aiRefreshing, setAiRefreshing] = useState(false);
+  const [aiPromoting, setAiPromoting] = useState(false);
+  const [activeGenerationId, setActiveGenerationId] = useState<string | null>(null);
+  const [activeGeneration, setActiveGeneration] = useState<AiGenerationJob | null>(null);
+  const [recentAiObjectId, setRecentAiObjectId] = useState<string | null>(null);
+  const [aiAutoPollingEnabled, setAiAutoPollingEnabled] = useState(false);
+  const [aiPollCountdownSec, setAiPollCountdownSec] = useState<number | null>(null);
+  const [aiPollFailureCount, setAiPollFailureCount] = useState(0);
+  const [aiEventLog, setAiEventLog] = useState<AiLogEntry[]>([]);
+  const [aiLogFilter, setAiLogFilter] = useState<'all' | AiLogLevel>('all');
+  const [aiCategoryFilter, setAiCategoryFilter] = useState<'all' | AiLogCategory>('all');
+  const [aiLogQuery, setAiLogQuery] = useState('');
+  const [logRetryFeedback, setLogRetryFeedback] = useState<{
+    entryId: string;
+    tone: 'ok' | 'error';
+    message: string;
+  } | null>(null);
+  const [lastGenerationFetchedAt, setLastGenerationFetchedAt] = useState<string | null>(null);
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -89,6 +140,9 @@ export default function SceneEditorPage() {
   const dragStartRef = useRef<{ x: number; y: number } | null>(null);
   const didDragRef = useRef(false);
   const latestPlacementsRef = useRef<PlacedObject[]>([]);
+  const aiLogPanelRef = useRef<HTMLDivElement | null>(null);
+  const aiPollStartedAtRef = useRef<number | null>(null);
+  const aiPollFailureCountRef = useRef(0);
   const sectionIds = ['arrange-tools', 'layout-2d', 'export-history'] as const;
 
   const activePlacement =
@@ -196,6 +250,56 @@ export default function SceneEditorPage() {
       position: { ...item.position },
       scale: { ...item.scale }
     }));
+  }
+
+  function formatGenerationStatus(status: AiGenerationStatus) {
+    const labels: Record<AiGenerationStatus, string> = {
+      queued: '대기 중',
+      running: '생성 중',
+      post_processing: '후처리 중',
+      ready: '완료',
+      failed: '실패'
+    };
+
+    return labels[status];
+  }
+
+  function pushAiEvent(
+    message: string,
+    level: AiLogLevel = 'info',
+    category: AiLogCategory = 'system'
+  ) {
+    const now = new Date();
+    const hh = `${now.getHours()}`.padStart(2, '0');
+    const mm = `${now.getMinutes()}`.padStart(2, '0');
+    const ss = `${now.getSeconds()}`.padStart(2, '0');
+    const time = `${hh}:${mm}:${ss}`;
+
+    setAiEventLog((prev) => [
+      {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        time,
+        level,
+        category,
+        message
+      },
+      ...prev
+    ].slice(0, 8));
+  }
+
+  async function copyTextToClipboard(text: string, label: string) {
+    try {
+      if (!navigator.clipboard) {
+        throw new Error('clipboard-unavailable');
+      }
+
+      await navigator.clipboard.writeText(text);
+      pushAiEvent(`${label} 복사`);
+      setStatus(`${label}를 복사했습니다.`);
+    } catch {
+      pushAiEvent('클립보드 복사 실패', 'error', 'system');
+      setStatus('클립보드 복사에 실패했습니다. 브라우저 권한을 확인해 주세요.');
+    }
   }
 
   async function loadInitial() {
@@ -327,6 +431,33 @@ export default function SceneEditorPage() {
     return [...set].sort((a, b) => a.localeCompare(b));
   }, [catalog]);
 
+  const filteredAiEventLog = useMemo(() => {
+    const query = aiLogQuery.trim().toLowerCase();
+
+    return aiEventLog.filter((entry) => {
+      const levelOk = aiLogFilter === 'all' || entry.level === aiLogFilter;
+      const categoryOk = aiCategoryFilter === 'all' || entry.category === aiCategoryFilter;
+      const searchTarget = `${entry.time} ${entry.category} ${entry.level} ${entry.message}`.toLowerCase();
+      const queryOk = !query || searchTarget.includes(query);
+      return levelOk && categoryOk && queryOk;
+    });
+  }, [aiEventLog, aiLogFilter, aiCategoryFilter, aiLogQuery]);
+
+  const latestAiError = useMemo(
+    () => aiEventLog.find((entry) => entry.level === 'error') ?? null,
+    [aiEventLog]
+  );
+
+  function focusLatestErrorLog() {
+    setSidebarTab('catalog');
+    setAiLogFilter('error');
+    setAiCategoryFilter('all');
+
+    window.setTimeout(() => {
+      aiLogPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }, 0);
+  }
+
   const exportStatusLabel: Record<SceneExport['status'], string> = {
     queued: '대기 중',
     processing: '처리 중',
@@ -427,6 +558,426 @@ export default function SceneEditorPage() {
     await loadInitial();
     setStatus('3D 생성 완료');
   }
+
+  function sanitizeFilename(name: string) {
+    return name
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9._-]+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '');
+  }
+
+  function toAssetObjectKey(file: File) {
+    const safeName = sanitizeFilename(file.name || 'source-image.png') || 'source-image.png';
+    const timestamp = Date.now();
+    return `images/ai-source/${sceneId}/${timestamp}-${safeName}`;
+  }
+
+  async function runImageTo3DGeneration() {
+    if (!sceneAvailable) {
+      setStatus('씬을 찾을 수 없습니다. 씬 목록에서 다시 선택하세요.');
+      return;
+    }
+
+    if (!aiSourceFile) {
+      setStatus('먼저 이미지를 선택해 주세요.');
+      return;
+    }
+
+    setAiCreating(true);
+    setStatus('이미지 업로드 준비 중...');
+
+    const objectKey = toAssetObjectKey(aiSourceFile);
+
+    let uploadTicketRes: Response;
+    try {
+      uploadTicketRes = await fetch('/api/assets/upload-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          objectKey,
+          contentType: aiSourceFile.type || 'application/octet-stream'
+        })
+      });
+    } catch {
+      setAiCreating(false);
+      setStatus('네트워크 오류로 업로드 URL 생성에 실패했습니다.');
+      return;
+    }
+
+    if (!uploadTicketRes.ok) {
+      setAiCreating(false);
+      const message = await readErrorMessage(uploadTicketRes);
+      setStatus(message ?? '업로드 URL 생성에 실패했습니다.');
+      return;
+    }
+
+    const uploadTicket = (await uploadTicketRes.json()) as {
+      uploadUrl: string;
+    };
+
+    setStatus('원본 이미지 업로드 중...');
+
+    let uploadRes: Response;
+    try {
+      uploadRes = await fetch(uploadTicket.uploadUrl, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': aiSourceFile.type || 'application/octet-stream'
+        },
+        body: aiSourceFile
+      });
+    } catch {
+      setAiCreating(false);
+      setStatus('네트워크 오류로 원본 이미지 업로드에 실패했습니다.');
+      return;
+    }
+
+    if (!uploadRes.ok) {
+      setAiCreating(false);
+      setStatus('원본 이미지 업로드에 실패했습니다.');
+      return;
+    }
+
+    setStatus('AI 3D 생성 요청 중...');
+
+    let generationRes: Response;
+    try {
+      generationRes = await fetch('/api/ai/generations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sceneId,
+          sourceImageAssetId: objectKey,
+          prompt: aiPrompt.trim() || undefined,
+          quality: 'standard'
+        })
+      });
+    } catch {
+      setAiCreating(false);
+      setStatus('네트워크 오류로 AI 생성 요청에 실패했습니다.');
+      return;
+    }
+
+    if (generationRes.status === 401) {
+      setAiCreating(false);
+      setSceneAvailable(false);
+      setStatus('세션이 만료되었습니다. 다시 로그인해 주세요.');
+      router.replace('/');
+      return;
+    }
+
+    if (!generationRes.ok) {
+      setAiCreating(false);
+      const message = await readErrorMessage(generationRes);
+      setStatus(message ?? 'AI 생성 요청에 실패했습니다.');
+      return;
+    }
+
+    const createdJob = (await generationRes.json()) as AiGenerationJob;
+    setActiveGenerationId(createdJob.id);
+    setActiveGeneration(createdJob);
+    aiPollStartedAtRef.current = Date.now();
+    aiPollFailureCountRef.current = 0;
+    setAiPollFailureCount(0);
+    setAiPollCountdownSec(null);
+    setAiAutoPollingEnabled(true);
+    setAiCreating(false);
+    pushAiEvent(`생성 작업 접수 (${createdJob.id.slice(0, 8)})`, 'info', 'upload');
+    setStatus('AI 생성 요청이 접수되었습니다. 자동으로 상태를 확인합니다.');
+  }
+
+  function updateGenerationStatusMessage(job: AiGenerationJob) {
+    if (job.status === 'ready') {
+      setAiAutoPollingEnabled(false);
+      setAiPollCountdownSec(null);
+      pushAiEvent('생성 상태 완료', 'info', 'poll');
+      setStatus('AI 생성이 완료되었습니다. 오브젝트 등록 버튼을 눌러 카탈로그에 추가하세요.');
+      return;
+    }
+
+    if (job.status === 'failed') {
+      setAiAutoPollingEnabled(false);
+      setAiPollCountdownSec(null);
+      pushAiEvent('생성 상태 실패', 'error', 'poll');
+      setStatus(job.errorMessage ?? 'AI 생성이 실패했습니다. 다른 이미지로 다시 시도해 주세요.');
+      return;
+    }
+
+    setStatus(`AI 생성 진행 중: ${job.status} (${job.progress}%)`);
+  }
+
+  async function fetchGenerationStatus(options?: { silent?: boolean }) {
+    if (!activeGenerationId) {
+      if (!options?.silent) {
+        setStatus('조회할 생성 작업이 없습니다. 먼저 생성을 요청해 주세요.');
+      }
+      return null;
+    }
+
+    if (!options?.silent) {
+      setAiRefreshing(true);
+      setStatus('생성 상태 조회 중...');
+    }
+
+    let response: Response;
+    try {
+      response = await fetch(`/api/ai/generations/${activeGenerationId}`, {
+        cache: 'no-store'
+      });
+    } catch {
+      if (!options?.silent) {
+        pushAiEvent('상태 조회 실패 (network)', 'error', 'poll');
+      }
+      if (!options?.silent) {
+        setAiRefreshing(false);
+        setStatus('네트워크 오류로 생성 상태 조회에 실패했습니다.');
+      }
+      return null;
+    }
+
+    if (response.status === 401) {
+      if (!options?.silent) {
+        pushAiEvent('상태 조회 실패 (401 unauthorized)', 'error', 'poll');
+      }
+      if (!options?.silent) {
+        setAiRefreshing(false);
+      }
+      setSceneAvailable(false);
+      setStatus('세션이 만료되었습니다. 다시 로그인해 주세요.');
+      router.replace('/');
+      return null;
+    }
+
+    if (!response.ok) {
+      if (!options?.silent) {
+        pushAiEvent(`상태 조회 실패 (${response.status})`, 'error', 'poll');
+        setAiRefreshing(false);
+        const message = await readErrorMessage(response);
+        setStatus(message ?? '생성 상태 조회에 실패했습니다.');
+      }
+      return null;
+    }
+
+    const job = (await response.json()) as AiGenerationJob;
+    setActiveGeneration(job);
+    setLastGenerationFetchedAt(new Date().toLocaleTimeString('ko-KR'));
+
+    if (!options?.silent) {
+      setAiRefreshing(false);
+      updateGenerationStatusMessage(job);
+    }
+
+    return job;
+  }
+
+  async function refreshGenerationStatus() {
+    await fetchGenerationStatus();
+    pushAiEvent('수동 상태 조회', 'info', 'poll');
+  }
+
+  async function retryStatusFromLog(entryId: string) {
+    const job = await fetchGenerationStatus();
+
+    if (job) {
+      setLogRetryFeedback({
+        entryId,
+        tone: 'ok',
+        message: `재조회 성공 · ${formatGenerationStatus(job.status)} (${job.progress}%)`
+      });
+      pushAiEvent('로그 액션: 상태 재조회 성공', 'info', 'poll');
+      return;
+    }
+
+    setLogRetryFeedback({
+      entryId,
+      tone: 'error',
+      message: '재조회 실패 · 상태 메시지를 확인해 주세요.'
+    });
+    pushAiEvent('로그 액션: 상태 재조회 실패', 'error', 'poll');
+  }
+
+  function restartAutoPolling() {
+    if (!activeGenerationId) {
+      setStatus('다시 시작할 생성 작업이 없습니다. 먼저 생성을 요청해 주세요.');
+      return;
+    }
+
+    if (activeGeneration?.status === 'ready' || activeGeneration?.status === 'failed') {
+      setStatus('이미 완료된 작업입니다. 새 이미지를 업로드해 다시 생성해 주세요.');
+      return;
+    }
+
+    aiPollStartedAtRef.current = Date.now();
+    aiPollFailureCountRef.current = 0;
+    setAiPollFailureCount(0);
+    setAiPollCountdownSec(null);
+    setAiAutoPollingEnabled(true);
+    pushAiEvent('자동 확인 다시 시작', 'info', 'poll');
+    setStatus('자동 상태 확인을 다시 시작했습니다.');
+  }
+
+  async function promoteGenerationToCatalog() {
+    if (!activeGenerationId) {
+      setStatus('등록할 생성 결과가 없습니다.');
+      return;
+    }
+
+    setAiPromoting(true);
+    setStatus('생성 결과를 카탈로그에 등록 중...');
+
+    let response: Response;
+    try {
+      response = await fetch(`/api/ai/generations/${activeGenerationId}/promote`, {
+        method: 'POST'
+      });
+    } catch {
+      setAiPromoting(false);
+      setStatus('네트워크 오류로 카탈로그 등록에 실패했습니다.');
+      return;
+    }
+
+    if (response.status === 401) {
+      setAiPromoting(false);
+      setSceneAvailable(false);
+      setStatus('세션이 만료되었습니다. 다시 로그인해 주세요.');
+      router.replace('/');
+      return;
+    }
+
+    if (!response.ok) {
+      setAiPromoting(false);
+      const message = await readErrorMessage(response);
+      setStatus(message ?? '카탈로그 등록에 실패했습니다. 생성 상태가 ready인지 확인해 주세요.');
+      return;
+    }
+
+    const created = (await response.json()) as ObjectDefinition;
+    setCatalog((prev) => {
+      if (prev.some((item) => item.id === created.id)) {
+        return prev;
+      }
+      return [created, ...prev];
+    });
+    setRecentAiObjectId(created.id);
+    setAiPromoting(false);
+    pushAiEvent(`카탈로그 등록 (${created.name})`, 'info', 'promote');
+    setStatus(`카탈로그 등록 완료: ${created.name}`);
+  }
+
+  async function promoteAndPlaceGeneration() {
+    if (!sceneAvailable) {
+      setStatus('씬을 찾을 수 없습니다. 씬 목록에서 다시 선택하세요.');
+      return;
+    }
+
+    if (!activeGenerationId) {
+      setStatus('등록할 생성 결과가 없습니다.');
+      return;
+    }
+
+    setAiPromoting(true);
+    setStatus('생성 결과를 등록하고 배치 중...');
+
+    let response: Response;
+    try {
+      response = await fetch(`/api/ai/generations/${activeGenerationId}/promote`, {
+        method: 'POST'
+      });
+    } catch {
+      setAiPromoting(false);
+      setStatus('네트워크 오류로 등록/배치에 실패했습니다.');
+      return;
+    }
+
+    if (response.status === 401) {
+      setAiPromoting(false);
+      setSceneAvailable(false);
+      setStatus('세션이 만료되었습니다. 다시 로그인해 주세요.');
+      router.replace('/');
+      return;
+    }
+
+    if (!response.ok) {
+      setAiPromoting(false);
+      const message = await readErrorMessage(response);
+      setStatus(message ?? '등록/배치에 실패했습니다. 생성 상태가 ready인지 확인해 주세요.');
+      return;
+    }
+
+    const created = (await response.json()) as ObjectDefinition;
+    setCatalog((prev) => {
+      if (prev.some((item) => item.id === created.id)) {
+        return prev;
+      }
+      return [created, ...prev];
+    });
+    setRecentAiObjectId(created.id);
+    setAiPromoting(false);
+    addFromCatalog(created);
+    setSidebarTab('placed');
+    pushAiEvent(`등록 후 배치 (${created.name})`, 'info', 'promote');
+    setStatus(`등록 후 배치 완료: ${created.name}`);
+  }
+
+  useEffect(() => {
+    if (!activeGenerationId || !activeGeneration || !sceneAvailable || !aiAutoPollingEnabled) {
+      return;
+    }
+
+    if (activeGeneration.status === 'ready' || activeGeneration.status === 'failed') {
+      return;
+    }
+
+    const startedAt = aiPollStartedAtRef.current;
+    if (startedAt && Date.now() - startedAt > 1000 * 60 * 3) {
+      setAiAutoPollingEnabled(false);
+      setAiPollCountdownSec(null);
+      pushAiEvent('자동 확인 시간 초과로 중단', 'warn', 'poll');
+      setStatus('AI 생성 상태 자동 확인 시간이 초과되었습니다. 생성 상태 조회 버튼으로 다시 확인해 주세요.');
+      return;
+    }
+
+    const failureCount = aiPollFailureCountRef.current;
+    const delayMs = Math.min(2500 * Math.max(1, 2 ** failureCount), 15000);
+    const delaySec = Math.max(1, Math.ceil(delayMs / 1000));
+    setAiPollCountdownSec(delaySec);
+
+    const countdown = window.setInterval(() => {
+      setAiPollCountdownSec((prev) => {
+        if (prev === null) {
+          return null;
+        }
+        return prev <= 1 ? 0 : prev - 1;
+      });
+    }, 1000);
+
+    const timer = window.setTimeout(() => {
+      void fetchGenerationStatus({ silent: true }).then((job) => {
+        if (job) {
+          aiPollFailureCountRef.current = 0;
+          setAiPollFailureCount(0);
+          updateGenerationStatusMessage(job);
+        } else {
+          aiPollFailureCountRef.current += 1;
+          setAiPollFailureCount(aiPollFailureCountRef.current);
+
+          if (aiPollFailureCountRef.current >= 5) {
+            setAiAutoPollingEnabled(false);
+            setAiPollCountdownSec(null);
+            pushAiEvent('자동 확인 실패 누적으로 중단', 'error', 'poll');
+            setStatus('자동 상태 확인이 여러 번 실패했습니다. 생성 상태 조회 버튼으로 다시 시도해 주세요.');
+          }
+        }
+      });
+    }, delayMs);
+
+    return () => {
+      window.clearInterval(countdown);
+      window.clearTimeout(timer);
+    };
+  }, [activeGenerationId, activeGeneration, sceneAvailable, aiAutoPollingEnabled]);
 
   async function runExport() {
     if (!sceneAvailable) {
@@ -849,6 +1400,17 @@ export default function SceneEditorPage() {
             <i className="bi bi-activity" aria-hidden="true" />
             {saving ? '저장 중...' : status}
           </span>
+          {latestAiError ? (
+            <span
+              className="label"
+              title={latestAiError.message}
+              style={{ background: 'rgba(184, 37, 37, 0.16)', color: '#8c2020', cursor: 'pointer' }}
+              onClick={focusLatestErrorLog}
+            >
+              <i className="bi bi-exclamation-triangle-fill" aria-hidden="true" style={{ marginRight: 4 }} />
+              최근 오류 [{latestAiError.level.toUpperCase()}/{latestAiError.category.toUpperCase()}]: {latestAiError.time} {latestAiError.message}
+            </span>
+          ) : null}
           <button className="btn btn-outline-secondary btn-sm toolbar-icon-btn" onClick={() => void runGenerate()}>
             <span className="d-none d-md-inline">3D 생성</span>
           </button>
@@ -1028,6 +1590,293 @@ export default function SceneEditorPage() {
             </>
           ) : (
             <>
+              <div className="list-row" style={{ marginBottom: 10 }}>
+                <div style={{ display: 'grid', gap: 8 }}>
+                  <strong style={{ fontSize: 14 }}>이미지로 AI 오브젝트 생성</strong>
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    className="form-control form-control-sm"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0] ?? null;
+                      setAiSourceFile(file);
+                    }}
+                  />
+                  <input
+                    className="form-control form-control-sm"
+                    placeholder="선택: 프롬프트 (예: wooden stool, clean silhouette)"
+                    value={aiPrompt}
+                    onChange={(e) => setAiPrompt(e.target.value)}
+                    maxLength={300}
+                  />
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <button className="btn btn-primary btn-sm" onClick={() => void runImageTo3DGeneration()} disabled={aiCreating || !aiSourceFile}>
+                      {aiCreating ? '요청 중...' : '이미지 업로드 + 3D 생성'}
+                    </button>
+                    <button className="btn btn-outline-secondary btn-sm" onClick={() => void refreshGenerationStatus()} disabled={aiRefreshing || !activeGenerationId}>
+                      {aiRefreshing ? '조회 중...' : '생성 상태 조회'}
+                    </button>
+                    <button
+                      className="btn btn-outline-secondary btn-sm"
+                      onClick={() => void promoteGenerationToCatalog()}
+                      disabled={
+                        aiPromoting ||
+                        !activeGenerationId ||
+                        !activeGeneration ||
+                        activeGeneration.status !== 'ready'
+                      }
+                    >
+                      {aiPromoting ? '등록 중...' : '생성 결과 등록'}
+                    </button>
+                    <button
+                      className="btn btn-outline-secondary btn-sm"
+                      onClick={() => void promoteAndPlaceGeneration()}
+                      disabled={
+                        aiPromoting ||
+                        !activeGenerationId ||
+                        !activeGeneration ||
+                        activeGeneration.status !== 'ready'
+                      }
+                    >
+                      {aiPromoting ? '배치 중...' : '등록 후 바로 배치'}
+                    </button>
+                  </div>
+
+                  {aiAutoPollingEnabled ? (
+                    <div className="alert alert-info" role="status" style={{ margin: 0, padding: '6px 10px' }}>
+                      자동 확인 중
+                      {aiPollCountdownSec !== null ? ` · 다음 조회 ${aiPollCountdownSec}초 후` : ''}
+                      {aiPollFailureCount > 0 ? ` · 실패 ${aiPollFailureCount}회` : ''}
+                    </div>
+                  ) : activeGenerationId ? (
+                    <div className="alert alert-secondary" role="status" style={{ margin: 0, padding: '6px 10px' }}>
+                      자동 확인이 중단되었습니다.
+                      <button
+                        className="btn btn-outline-secondary btn-sm"
+                        style={{ marginLeft: 8 }}
+                        onClick={restartAutoPolling}
+                        disabled={aiRefreshing}
+                      >
+                        자동 확인 다시 시작
+                      </button>
+                    </div>
+                  ) : null}
+
+                  {activeGeneration ? (
+                    <div className="list-row" style={{ borderColor: '#d6e9ff', background: '#f5faff' }}>
+                      <div style={{ display: 'grid', gap: 6 }}>
+                        <strong style={{ fontSize: 14 }}>생성 결과</strong>
+                        <p className="subtle" style={{ margin: 0 }}>
+                          작업 {activeGeneration.id.slice(0, 8)} · 상태 {formatGenerationStatus(activeGeneration.status)} · 진행 {activeGeneration.progress}%
+                        </p>
+                        {lastGenerationFetchedAt ? (
+                          <p className="subtle" style={{ margin: 0 }}>
+                            마지막 조회: {lastGenerationFetchedAt}
+                          </p>
+                        ) : null}
+                        {activeGeneration.errorMessage ? (
+                          <p className="subtle" style={{ margin: 0, color: '#a03030' }}>
+                            오류: {activeGeneration.errorMessage}
+                          </p>
+                        ) : null}
+                        {activeGeneration.generatedAsset ? (
+                          <>
+                            <p className="subtle" style={{ margin: 0 }}>
+                              GLB 자산: {activeGeneration.generatedAsset.glbAssetId}
+                            </p>
+                            {activeGeneration.generatedAsset.objAssetId ? (
+                              <p className="subtle" style={{ margin: 0 }}>
+                                OBJ 자산: {activeGeneration.generatedAsset.objAssetId}
+                              </p>
+                            ) : null}
+                            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                              <button
+                                className="btn btn-outline-secondary btn-sm"
+                                onClick={() =>
+                                  void copyTextToClipboard(activeGeneration.generatedAsset!.glbAssetId, 'GLB 자산 ID')
+                                }
+                              >
+                                GLB 자산 ID 복사
+                              </button>
+                              {activeGeneration.generatedAsset.objAssetId ? (
+                                <button
+                                  className="btn btn-outline-secondary btn-sm"
+                                  onClick={() =>
+                                    void copyTextToClipboard(
+                                      activeGeneration.generatedAsset!.objAssetId as string,
+                                      'OBJ 자산 ID'
+                                    )
+                                  }
+                                >
+                                  OBJ 자산 ID 복사
+                                </button>
+                              ) : null}
+                            </div>
+                          </>
+                        ) : null}
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="subtle" style={{ margin: 0 }}>
+                      생성 작업이 없습니다.
+                    </p>
+                  )}
+
+                  {aiEventLog.length > 0 ? (
+                    <div className="list-row" style={{ borderColor: '#ececec' }} ref={aiLogPanelRef}>
+                      <div style={{ display: 'grid', gap: 4 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                          <strong style={{ fontSize: 13 }}>이벤트 로그</strong>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                            <div className="btn-group btn-group-sm" role="group" aria-label="로그 필터">
+                              <button
+                                className={`btn ${aiLogFilter === 'all' ? 'btn-primary' : 'btn-outline-secondary'}`}
+                                onClick={() => setAiLogFilter('all')}
+                              >
+                                전체
+                              </button>
+                              <button
+                                className={`btn ${aiLogFilter === 'info' ? 'btn-primary' : 'btn-outline-secondary'}`}
+                                onClick={() => setAiLogFilter('info')}
+                              >
+                                INFO
+                              </button>
+                              <button
+                                className={`btn ${aiLogFilter === 'warn' ? 'btn-primary' : 'btn-outline-secondary'}`}
+                                onClick={() => setAiLogFilter('warn')}
+                              >
+                                WARN
+                              </button>
+                              <button
+                                className={`btn ${aiLogFilter === 'error' ? 'btn-primary' : 'btn-outline-secondary'}`}
+                                onClick={() => setAiLogFilter('error')}
+                              >
+                                ERROR
+                              </button>
+                            </div>
+                            <button
+                              className="btn btn-outline-secondary btn-sm"
+                              onClick={() => {
+                                setAiEventLog([]);
+                                setAiLogFilter('all');
+                                setAiCategoryFilter('all');
+                                setAiLogQuery('');
+                                setLogRetryFeedback(null);
+                              }}
+                            >
+                              로그 초기화
+                            </button>
+                          </div>
+                        </div>
+                        <input
+                          className="form-control form-control-sm"
+                          placeholder="로그 검색 (메시지/카테고리/레벨)"
+                          value={aiLogQuery}
+                          onChange={(e) => setAiLogQuery(e.target.value)}
+                          aria-label="이벤트 로그 검색"
+                        />
+                        <div className="btn-group btn-group-sm" role="group" aria-label="카테고리 필터">
+                          <button
+                            className={`btn ${aiCategoryFilter === 'all' ? 'btn-primary' : 'btn-outline-secondary'}`}
+                            onClick={() => setAiCategoryFilter('all')}
+                          >
+                            ALL
+                          </button>
+                          <button
+                            className={`btn ${aiCategoryFilter === 'poll' ? 'btn-primary' : 'btn-outline-secondary'}`}
+                            onClick={() => setAiCategoryFilter('poll')}
+                          >
+                            POLL
+                          </button>
+                          <button
+                            className={`btn ${aiCategoryFilter === 'upload' ? 'btn-primary' : 'btn-outline-secondary'}`}
+                            onClick={() => setAiCategoryFilter('upload')}
+                          >
+                            UPLOAD
+                          </button>
+                          <button
+                            className={`btn ${aiCategoryFilter === 'promote' ? 'btn-primary' : 'btn-outline-secondary'}`}
+                            onClick={() => setAiCategoryFilter('promote')}
+                          >
+                            PROMOTE
+                          </button>
+                          <button
+                            className={`btn ${aiCategoryFilter === 'system' ? 'btn-primary' : 'btn-outline-secondary'}`}
+                            onClick={() => setAiCategoryFilter('system')}
+                          >
+                            SYSTEM
+                          </button>
+                        </div>
+                        {filteredAiEventLog.length === 0 ? (
+                          <p className="subtle" style={{ margin: 0 }}>
+                            표시할 로그가 없습니다.
+                          </p>
+                        ) : (
+                          filteredAiEventLog.map((entry) => (
+                            <div key={entry.id} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                              <span
+                                className="label"
+                                style={{ background: 'rgba(120, 120, 120, 0.14)', color: '#4f4f4f' }}
+                              >
+                                {entry.category.toUpperCase()}
+                              </span>
+                              <span
+                                className="label"
+                                style={{
+                                  background:
+                                    entry.level === 'error'
+                                      ? 'rgba(184, 37, 37, 0.16)'
+                                      : entry.level === 'warn'
+                                      ? 'rgba(181, 120, 0, 0.16)'
+                                      : 'rgba(10, 143, 106, 0.16)',
+                                  color:
+                                    entry.level === 'error'
+                                      ? '#8c2020'
+                                      : entry.level === 'warn'
+                                      ? '#8a5a00'
+                                      : '#0a8f6a',
+                                  cursor: 'pointer'
+                                }}
+                                onClick={() => setAiLogFilter(entry.level)}
+                                title={`${entry.level.toUpperCase()} 필터 적용`}
+                              >
+                                {entry.level.toUpperCase()}
+                              </span>
+                              <p className="subtle" style={{ margin: 0 }}>
+                                {entry.time} {entry.message}
+                              </p>
+                              {entry.category === 'poll' && entry.level === 'error' ? (
+                                <button
+                                  className="btn btn-outline-secondary btn-sm"
+                                  onClick={() => void retryStatusFromLog(entry.id)}
+                                  disabled={aiRefreshing}
+                                >
+                                  상태 재조회
+                                </button>
+                              ) : null}
+                              {logRetryFeedback?.entryId === entry.id ? (
+                                <p
+                                  className="subtle"
+                                  style={{
+                                    margin: 0,
+                                    color:
+                                      logRetryFeedback.tone === 'error'
+                                        ? '#8c2020'
+                                        : '#0a8f6a'
+                                  }}
+                                >
+                                  {logRetryFeedback.message}
+                                </p>
+                              ) : null}
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+
               <input
                 className="form-control form-control-sm"
                 placeholder="이름/코드/카테고리 검색"
@@ -1059,10 +1908,24 @@ export default function SceneEditorPage() {
                   </p>
                 ) : (
                   filteredCatalog.map((def) => (
-                    <div key={def.id} className="list-row">
+                    <div
+                      key={def.id}
+                      className="list-row"
+                      style={
+                        def.id === recentAiObjectId
+                          ? {
+                              borderColor: '#0a8f6a',
+                              background: 'rgba(10, 143, 106, 0.08)'
+                            }
+                          : undefined
+                      }
+                    >
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
                         <div>
-                          <strong style={{ fontSize: 14 }}>{def.name}</strong>
+                          <strong style={{ fontSize: 14 }}>
+                            {def.name}
+                            {def.id === recentAiObjectId ? ' (신규 AI)' : ''}
+                          </strong>
                           <p className="subtle" style={{ margin: '4px 0 0' }}>
                             {def.category} / {def.code}
                           </p>

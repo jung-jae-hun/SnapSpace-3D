@@ -1,6 +1,7 @@
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { backendUrl } from '../../../../lib/backend';
+import { forwardProxyJson, proxyRequestFailed } from '../../../../lib/proxy-response';
 
 export async function GET() {
   const cookieStore = await cookies();
@@ -10,13 +11,16 @@ export async function GET() {
     return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
   }
 
-  const response = await fetch(backendUrl('/auth/me'), {
-    headers: {
-      Authorization: `Bearer ${accessToken}`
-    },
-    cache: 'no-store'
-  });
+  try {
+    const response = await fetch(backendUrl('/auth/me'), {
+      headers: {
+        Authorization: `Bearer ${accessToken}`
+      },
+      cache: 'no-store'
+    });
 
-  const data = await response.json();
-  return NextResponse.json(data, { status: response.status });
+    return await forwardProxyJson(response);
+  } catch (error) {
+    return proxyRequestFailed(error, '/auth/me');
+  }
 }

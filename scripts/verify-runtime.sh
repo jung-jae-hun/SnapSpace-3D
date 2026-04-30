@@ -62,15 +62,17 @@ cd "$REPO_ROOT"
 echo "[verify:runtime] 1/4 docker 서비스 상태 확인"
 docker compose --env-file "$ENV_FILE" -p "$PROJECT_NAME" -f "$COMPOSE_FILE" ps
 
-echo "[verify:runtime] 2/4 웹 ${WEB_PORT} 응답 확인"
+echo "[verify:runtime] 2/4 웹 프록시 응답 확인 (/api/auth/me)"
 WEB_OUT="$(mktemp)"
 HEALTH_OUT="$(mktemp)"
 LOGIN_OUT="$(mktemp)"
 trap 'rm -f "$WEB_OUT" "$HEALTH_OUT" "$LOGIN_OUT"' EXIT
 
-WEB_CODE="$(curl --retry 40 --retry-all-errors --retry-delay 1 -sS -o "$WEB_OUT" -w '%{http_code}' "http://localhost:${WEB_PORT}")"
-if [[ "$WEB_CODE" != "200" ]]; then
-  echo "[verify:runtime] FAIL: web status=$WEB_CODE"
+WEB_CODE="$(curl --retry 40 --retry-all-errors --retry-delay 1 -sS -o "$WEB_OUT" -w '%{http_code}' "http://localhost:${WEB_PORT}/api/auth/me")"
+if [[ "$WEB_CODE" != "401" ]]; then
+  echo "[verify:runtime] FAIL: web proxy status=$WEB_CODE (expected 401)"
+  cat "$WEB_OUT" || true
+  echo
   exit 1
 fi
 
@@ -103,7 +105,7 @@ if ! grep -q '"user"' "$LOGIN_OUT"; then
 fi
 
 echo "[verify:runtime] PASS"
-echo "- web:    $WEB_CODE"
+echo "- web-proxy(auth/me): $WEB_CODE"
 echo "- health: $HEALTH_CODE"
 echo "- login:  $LOGIN_CODE"
 echo "- email:  $LOGIN_EMAIL"

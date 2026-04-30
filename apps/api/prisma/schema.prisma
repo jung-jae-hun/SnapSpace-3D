@@ -8,39 +8,42 @@ datasource db {
 }
 
 model User {
-  id        String    @id @default(cuid())
-  email     String    @unique
-  name      String?
-  tokenVersion Int    @default(0)
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  projects  Project[]
+  id               String            @id @default(cuid())
+  email            String            @unique
+  name             String?
+  tokenVersion     Int               @default(0)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  projects         Project[]
+  aiGenerationJobs AiGenerationJob[]
 }
 
 model Project {
-  id          String    @id @default(cuid())
-  userId      String
-  name        String
-  description String?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  scenes      Scene[]
+  id               String            @id @default(cuid())
+  userId           String
+  name             String
+  description      String?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  scenes           Scene[]
+  aiGenerationJobs AiGenerationJob[]
 
   @@index([userId])
 }
 
 model Scene {
-  id        String   @id @default(cuid())
-  projectId String
-  name      String
-  version   Int      @default(1)
-  archivedAt DateTime?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  placedObjects PlacedObject[]
-  sceneCommands SceneCommand[]
+  id               String            @id @default(cuid())
+  projectId        String
+  name             String
+  version          Int               @default(1)
+  archivedAt       DateTime?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  project          Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  placedObjects    PlacedObject[]
+  sceneCommands    SceneCommand[]
+  aiGenerationJobs AiGenerationJob[]
 
   @@index([projectId])
   @@index([archivedAt])
@@ -65,24 +68,27 @@ model SceneCommand {
 }
 
 model ObjectDefinition {
-  id               String   @id @default(cuid())
-  code             String   @unique
-  name             String
-  category         String
-  tags             String[]
-  modelAssetId     String?
-  thumbnailAssetId String?
-  defaultSize      Json?
-  pivot            String?
-  allowedRotations Int[]
-  sockets          Json?
-  placementRules   Json?
-  scalable         Json?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-  placedObjects    PlacedObject[]
+  id                      String                 @id @default(cuid())
+  code                    String                 @unique
+  name                    String
+  category                String
+  tags                    String[]
+  modelAssetId            String?
+  thumbnailAssetId        String?
+  defaultSize             Json?
+  pivot                   String?
+  allowedRotations        Int[]
+  sockets                 Json?
+  placementRules          Json?
+  scalable                Json?
+  source                  ObjectDefinitionSource @default(manual)
+  sourceGenerationAssetId String?
+  createdAt               DateTime               @default(now())
+  updatedAt               DateTime               @updatedAt
+  placedObjects           PlacedObject[]
 
   @@index([category])
+  @@index([source])
 }
 
 model PlacedObject {
@@ -101,4 +107,87 @@ model PlacedObject {
 
   @@index([sceneId])
   @@index([objectDefinitionId])
+}
+
+model AiGenerationJob {
+  id                 String             @id @default(cuid())
+  userId             String
+  projectId          String
+  sceneId            String?
+  provider           String
+  status             AiGenerationStatus @default(queued)
+  prompt             String?
+  sourceImageAssetId String
+  quality            GenerationQuality  @default(standard)
+  progress           Int                @default(0)
+  errorCode          String?
+  errorMessage       String?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  user               User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project            Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  scene              Scene?             @relation(fields: [sceneId], references: [id], onDelete: SetNull)
+  generatedAsset     AiGeneratedAsset?
+
+  @@index([userId, createdAt])
+  @@index([projectId, createdAt])
+  @@index([sceneId])
+  @@index([status, createdAt])
+}
+
+model AiGeneratedAsset {
+  id                  String             @id @default(cuid())
+  generationJobId     String             @unique
+  glbAssetId          String
+  objAssetId          String?
+  previewImageAssetId String?
+  boundsJson          Json
+  pivotMode           String             @default("bottom-center")
+  normalizedUnit      String             @default("meter")
+  status              AiGeneratedStatus  @default(ready)
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+  generationJob       AiGenerationJob    @relation(fields: [generationJobId], references: [id], onDelete: Cascade)
+  footprint2d         ObjectFootprint2d?
+
+  @@index([status, createdAt])
+}
+
+model ObjectFootprint2d {
+  id               String           @id @default(cuid())
+  generatedAssetId String           @unique
+  shapeType        FootprintShape
+  pointsJson       Json
+  width            Float
+  depth            Float
+  createdAt        DateTime         @default(now())
+  generatedAsset   AiGeneratedAsset @relation(fields: [generatedAssetId], references: [id], onDelete: Cascade)
+}
+
+enum AiGenerationStatus {
+  queued
+  running
+  post_processing
+  ready
+  failed
+}
+
+enum AiGeneratedStatus {
+  ready
+  failed
+}
+
+enum GenerationQuality {
+  low
+  standard
+}
+
+enum FootprintShape {
+  rect
+  polygon
+}
+
+enum ObjectDefinitionSource {
+  manual
+  ai
 }

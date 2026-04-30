@@ -1,6 +1,7 @@
 import { cookies } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
 import { backendUrl } from '../../../../../lib/backend';
+import { forwardProxyJson, proxyRequestFailed } from '../../../../../lib/proxy-response';
 
 type RouteContext = {
   params: Promise<{ sceneId: string }>;
@@ -19,15 +20,18 @@ export async function GET(_request: NextRequest, context: RouteContext) {
 
   const { sceneId } = await context.params;
 
-  const response = await fetch(backendUrl(`/scenes/${sceneId}/placed-objects`), {
-    headers: {
-      Authorization: `Bearer ${accessToken}`
-    },
-    cache: 'no-store'
-  });
+  try {
+    const response = await fetch(backendUrl(`/scenes/${sceneId}/placed-objects`), {
+      headers: {
+        Authorization: `Bearer ${accessToken}`
+      },
+      cache: 'no-store'
+    });
 
-  const data = await response.json();
-  return NextResponse.json(data, { status: response.status });
+    return await forwardProxyJson(response);
+  } catch (error) {
+    return proxyRequestFailed(error, `/scenes/${sceneId}/placed-objects`);
+  }
 }
 
 export async function POST(request: NextRequest, context: RouteContext) {
@@ -54,15 +58,18 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
   const { sceneId } = await context.params;
 
-  const response = await fetch(backendUrl(`/scenes/${sceneId}/placed-objects`), {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(body)
-  });
+  try {
+    const response = await fetch(backendUrl(`/scenes/${sceneId}/placed-objects`), {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(body)
+    });
 
-  const data = await response.json();
-  return NextResponse.json(data, { status: response.status });
+    return await forwardProxyJson(response);
+  } catch (error) {
+    return proxyRequestFailed(error, `/scenes/${sceneId}/placed-objects`);
+  }
 }
