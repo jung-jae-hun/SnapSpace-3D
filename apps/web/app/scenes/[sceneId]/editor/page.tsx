@@ -149,6 +149,8 @@ export default function SceneEditorPage() {
     activeIndex !== null && activeIndex >= 0 && activeIndex < placements.length
       ? placements[activeIndex]
       : null;
+  const isGenerationTerminal =
+    activeGeneration?.status === 'ready' || activeGeneration?.status === 'failed';
 
   useEffect(() => {
     if (!sceneId) {
@@ -1648,7 +1650,7 @@ export default function SceneEditorPage() {
                       {aiPollCountdownSec !== null ? ` · 다음 조회 ${aiPollCountdownSec}초 후` : ''}
                       {aiPollFailureCount > 0 ? ` · 실패 ${aiPollFailureCount}회` : ''}
                     </div>
-                  ) : activeGenerationId ? (
+                  ) : activeGenerationId && !isGenerationTerminal ? (
                     <div className="alert alert-secondary" role="status" style={{ margin: 0, padding: '6px 10px' }}>
                       자동 확인이 중단되었습니다.
                       <button
@@ -1659,6 +1661,10 @@ export default function SceneEditorPage() {
                       >
                         자동 확인 다시 시작
                       </button>
+                    </div>
+                  ) : activeGenerationId && activeGeneration?.status === 'ready' ? (
+                    <div className="alert alert-success" role="status" style={{ margin: 0, padding: '6px 10px' }}>
+                      자동 확인 완료 · 생성이 정상적으로 끝났습니다.
                     </div>
                   ) : null}
 
@@ -1690,6 +1696,12 @@ export default function SceneEditorPage() {
                               </p>
                             ) : null}
                             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                              <button
+                                className="btn btn-outline-secondary btn-sm"
+                                onClick={() => setShowPreviewModal(true)}
+                              >
+                                3D 미리보기 열기
+                              </button>
                               <button
                                 className="btn btn-outline-secondary btn-sm"
                                 onClick={() =>
