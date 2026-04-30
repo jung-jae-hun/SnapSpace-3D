@@ -83,6 +83,8 @@ type AiLogEntry = {
   message: string;
 };
 
+type AiPollStopReason = 'completed' | 'failed' | 'timeout' | 'failure-limit' | null;
+
 export default function SceneEditorPage() {
   const params = useParams<{ sceneId: string }>();
   const router = useRouter();
@@ -122,6 +124,7 @@ export default function SceneEditorPage() {
   const [aiAutoPollingEnabled, setAiAutoPollingEnabled] = useState(false);
   const [aiPollCountdownSec, setAiPollCountdownSec] = useState<number | null>(null);
   const [aiPollFailureCount, setAiPollFailureCount] = useState(0);
+  const [aiPollStopReason, setAiPollStopReason] = useState<AiPollStopReason>(null);
   const [aiEventLog, setAiEventLog] = useState<AiLogEntry[]>([]);
   const [aiLogFilter, setAiLogFilter] = useState<'all' | AiLogLevel>('all');
   const [aiCategoryFilter, setAiCategoryFilter] = useState<'all' | AiLogCategory>('all');
@@ -132,6 +135,9 @@ export default function SceneEditorPage() {
     message: string;
   } | null>(null);
   const [lastGenerationFetchedAt, setLastGenerationFetchedAt] = useState<string | null>(null);
+  const [generationPreviewUrl, setGenerationPreviewUrl] = useState<string | null>(null);
+  const [generationPreviewLoading, setGenerationPreviewLoading] = useState(false);
+  const [autoOpenPreviewOnReady, setAutoOpenPreviewOnReady] = useState(true);
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -143,6 +149,7 @@ export default function SceneEditorPage() {
   const aiLogPanelRef = useRef<HTMLDivElement | null>(null);
   const aiPollStartedAtRef = useRef<number | null>(null);
   const aiPollFailureCountRef = useRef(0);
+  const previousGenerationStatusRef = useRef<AiGenerationStatus | null>(null);
   const sectionIds = ['arrange-tools', 'layout-2d', 'export-history'] as const;
 
   const activePlacement =
@@ -264,6 +271,17 @@ export default function SceneEditorPage() {
     };
 
     return labels[status];
+  }
+
+  function formatPollStopReason(reason: AiPollStopReason) {
+    const labels: Record<Exclude<AiPollStopReason, null>, string> = {
+      completed: '완료',
+      failed: '실패',
+      timeout: '시간 초과',
+      'failure-limit': '실패 누적'
+    };
+
+    return reason ? labels[reason] : null;
   }
 
   function pushAiEvent(
@@ -684,6 +702,8 @@ export default function SceneEditorPage() {
     aiPollFailureCountRef.current = 0;
     setAiPollFailureCount(0);
     setAiPollCountdownSec(null);
+    setAiPollStopReason(null);
+    setGenerationPreviewUrl(null);
     setAiAutoPollingEnabled(true);
     setAiCreating(false);
     pushAiEvent(`생성 작업 접수 (${createdJob.id.slice(0, 8)})`, 'info', 'upload');
@@ -694,6 +714,7 @@ export default function SceneEditorPage() {
     if (job.status === 'ready') {
       setAiAutoPollingEnabled(false);
       setAiPollCountdownSec(null);
+      setAiPollStopReason('completed');
       pushAiEvent('생성 상태 완료', 'info', 'poll');
       setStatus('AI 생성이 완료되었습니다. 오브젝트 등록 버튼을 눌러 카탈로그에 추가하세요.');
       return;
@@ -702,6 +723,7 @@ export default function SceneEditorPage() {
     if (job.status === 'failed') {
       setAiAutoPollingEnabled(false);
       setAiPollCountdownSec(null);
+      setAiPollStopReason('failed');
       pushAiEvent('생성 상태 실패', 'error', 'poll');
       setStatus(job.errorMessage ?? 'AI 생성이 실패했습니다. 다른 이미지로 다시 시도해 주세요.');
       return;
@@ -815,6 +837,7 @@ export default function SceneEditorPage() {
     aiPollFailureCountRef.current = 0;
     setAiPollFailureCount(0);
     setAiPollCountdownSec(null);
+    setAiPollStopReason(null);
     setAiAutoPollingEnabled(true);
     pushAiEvent('자동 확인 다시 시작', 'info', 'poll');
     setStatus('자동 상태 확인을 다시 시작했습니다.');
@@ -936,6 +959,7 @@ export default function SceneEditorPage() {
     if (startedAt && Date.now() - startedAt > 1000 * 60 * 3) {
       setAiAutoPollingEnabled(false);
       setAiPollCountdownSec(null);
+      setAiPollStopReason('timeout');
       pushAiEvent('자동 확인 시간 초과로 중단', 'warn', 'poll');
       setStatus('AI 생성 상태 자동 확인 시간이 초과되었습니다. 생성 상태 조회 버튼으로 다시 확인해 주세요.');
       return;
@@ -968,6 +992,7 @@ export default function SceneEditorPage() {
           if (aiPollFailureCountRef.current >= 5) {
             setAiAutoPollingEnabled(false);
             setAiPollCountdownSec(null);
+            setAiPollStopReason('failure-limit');
             pushAiEvent('자동 확인 실패 누적으로 중단', 'error', 'poll');
             setStatus('자동 상태 확인이 여러 번 실패했습니다. 생성 상태 조회 버튼으로 다시 시도해 주세요.');
           }
@@ -980,6 +1005,66 @@ export default function SceneEditorPage() {
       window.clearTimeout(timer);
     };
   }, [activeGenerationId, activeGeneration, sceneAvailable, aiAutoPollingEnabled]);
+
+  useEffect(() => {
+    const previewAssetId = activeGeneration?.generatedAsset?.previewImageAssetId;
+    if (!previewAssetId) {
+      setGenerationPreviewUrl(null);
+      setGenerationPreviewLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setGenerationPreviewLoading(true);
+
+    void (async () => {
+      try {
+        const response = await fetch(
+          `/api/assets/download-url?objectKey=${encodeURIComponent(previewAssetId)}`,
+          { cache: 'no-store' }
+        );
+
+        if (!response.ok) {
+          throw new Error('preview-url-failed');
+        }
+
+        const payload = (await response.json()) as { downloadUrl?: string };
+        if (cancelled) {
+          return;
+        }
+
+        setGenerationPreviewUrl(payload.downloadUrl ?? null);
+      } catch {
+        if (!cancelled) {
+          setGenerationPreviewUrl(null);
+        }
+      } finally {
+        if (!cancelled) {
+          setGenerationPreviewLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeGeneration?.generatedAsset?.previewImageAssetId]);
+
+  useEffect(() => {
+    const prev = previousGenerationStatusRef.current;
+    const next = activeGeneration?.status ?? null;
+
+    if (prev !== 'ready' && next === 'ready' && autoOpenPreviewOnReady) {
+      if (generated.length > 0) {
+        setShowPreviewModal(true);
+        pushAiEvent('생성 완료로 3D 미리보기 자동 열기', 'info', 'system');
+      } else {
+        pushAiEvent('생성 완료: 미리보기 데이터 없음', 'warn', 'system');
+      }
+    }
+
+    previousGenerationStatusRef.current = next;
+  }, [activeGeneration?.status, autoOpenPreviewOnReady, generated.length]);
 
   async function runExport() {
     if (!sceneAvailable) {
@@ -1642,6 +1727,13 @@ export default function SceneEditorPage() {
                     >
                       {aiPromoting ? '배치 중...' : '등록 후 바로 배치'}
                     </button>
+                    <button
+                      className={`btn btn-sm ${autoOpenPreviewOnReady ? 'btn-primary' : 'btn-outline-secondary'}`}
+                      onClick={() => setAutoOpenPreviewOnReady((prev) => !prev)}
+                      type="button"
+                    >
+                      완료 시 미리보기 자동 열기 {autoOpenPreviewOnReady ? '켜짐' : '꺼짐'}
+                    </button>
                   </div>
 
                   {aiAutoPollingEnabled ? (
@@ -1653,6 +1745,11 @@ export default function SceneEditorPage() {
                   ) : activeGenerationId && !isGenerationTerminal ? (
                     <div className="alert alert-secondary" role="status" style={{ margin: 0, padding: '6px 10px' }}>
                       자동 확인이 중단되었습니다.
+                      {aiPollStopReason ? (
+                        <span className="label" style={{ marginLeft: 8 }}>
+                          사유: {formatPollStopReason(aiPollStopReason)}
+                        </span>
+                      ) : null}
                       <button
                         className="btn btn-outline-secondary btn-sm"
                         style={{ marginLeft: 8 }}
@@ -1687,6 +1784,24 @@ export default function SceneEditorPage() {
                         ) : null}
                         {activeGeneration.generatedAsset ? (
                           <>
+                            {activeGeneration.generatedAsset.previewImageAssetId ? (
+                              <div style={{ display: 'grid', gap: 6 }}>
+                                <p className="subtle" style={{ margin: 0 }}>
+                                  Preview 자산: {activeGeneration.generatedAsset.previewImageAssetId}
+                                </p>
+                                {generationPreviewLoading ? (
+                                  <p className="subtle" style={{ margin: 0 }}>썸네일 불러오는 중...</p>
+                                ) : generationPreviewUrl ? (
+                                  <img
+                                    src={generationPreviewUrl}
+                                    alt="생성 썸네일"
+                                    style={{ width: 176, height: 176, objectFit: 'cover', borderRadius: 8, border: '1px solid #d7d7d7' }}
+                                  />
+                                ) : (
+                                  <p className="subtle" style={{ margin: 0 }}>썸네일 URL을 불러오지 못했습니다.</p>
+                                )}
+                              </div>
+                            ) : null}
                             <p className="subtle" style={{ margin: 0 }}>
                               GLB 자산: {activeGeneration.generatedAsset.glbAssetId}
                             </p>

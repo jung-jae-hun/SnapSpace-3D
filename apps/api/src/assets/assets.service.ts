@@ -58,6 +58,24 @@ export class AssetsService {
     };
   }
 
+  async createDownloadUrl(objectKey: string) {
+    await this.ensureBucket();
+
+    const expiresInSeconds = 60 * 10;
+    const downloadUrl = await this.minioPublicClient.presignedGetObject(
+      this.bucket,
+      objectKey,
+      expiresInSeconds
+    );
+
+    return {
+      bucket: this.bucket,
+      objectKey,
+      expiresInSeconds,
+      downloadUrl
+    };
+  }
+
   async uploadFromExternalUrl(params: {
     sourceUrl: string;
     objectKey: string;
