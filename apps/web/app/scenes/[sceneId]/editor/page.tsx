@@ -989,7 +989,6 @@ export default function SceneEditorPage() {
 
           {sidebarTab === 'placed' ? (
             <>
-              <h2 style={{ marginTop: 0, marginBottom: 10 }}>등록 오브젝트</h2>
               <div className="sidebar-list">
                 {placements.length === 0 ? (
                   <p className="subtle" style={{ margin: 0, padding: '8px 0' }}>
@@ -1029,7 +1028,6 @@ export default function SceneEditorPage() {
             </>
           ) : (
             <>
-              <h2 style={{ marginTop: 0, marginBottom: 10 }}>오브젝트 추가</h2>
               <input
                 className="form-control form-control-sm"
                 placeholder="이름/코드/카테고리 검색"
