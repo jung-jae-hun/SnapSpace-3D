@@ -326,6 +326,13 @@ export default function SceneEditorPage() {
     return [...set].sort((a, b) => a.localeCompare(b));
   }, [catalog]);
 
+  const exportStatusLabel: Record<SceneExport['status'], string> = {
+    queued: '대기 중',
+    processing: '처리 중',
+    succeeded: '완료',
+    failed: '실패'
+  };
+
   function scheduleAutosave(nextPlacements: PlacedObject[]) {
     if (!sceneAvailable || !sceneId) {
       return;
@@ -828,7 +835,7 @@ export default function SceneEditorPage() {
     <main className={`page-shell ${density === 'compact' ? 'density-compact' : 'density-cozy'}`}>
       <header className="page-header">
         <div>
-          <p className="label">Scene Workspace</p>
+          <p className="label">씬 작업공간</p>
           <h1 className="headline" style={{ fontSize: 'clamp(1.8rem, 3.4vw, 2.4rem)' }}>
             SnapSpace 3D Layout Editor
           </h1>
@@ -839,7 +846,7 @@ export default function SceneEditorPage() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <span className="status-pill">
             <i className="bi bi-activity" aria-hidden="true" />
-            {saving ? 'saving...' : status}
+            {saving ? '저장 중...' : status}
           </span>
           <button className="btn btn-outline-secondary btn-sm toolbar-icon-btn" onClick={() => void runGenerate()}>
             <i className="bi bi-magic me-1" aria-hidden="true" />
@@ -848,7 +855,7 @@ export default function SceneEditorPage() {
         </div>
       </header>
 
-      <nav id="arrange-tools" className="top-nav" aria-label="Editor main navigation">
+      <nav id="arrange-tools" className="top-nav" aria-label="편집기 주 메뉴">
         <div className="menu-links">
           <Link href="/" className="btn btn-outline-secondary btn-sm toolbar-icon-btn" title="홈으로" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
             <i className="bi bi-house" aria-hidden="true" />
@@ -872,7 +879,7 @@ export default function SceneEditorPage() {
           </button>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          <div className="btn-group btn-group-sm" role="group" aria-label="move step">
+          <div className="btn-group btn-group-sm" role="group" aria-label="이동 간격">
             <button
               className={`btn ${moveStep === 0.1 ? 'btn-primary' : 'btn-outline-secondary'}`}
               onClick={() => setMoveStep(0.1)}
@@ -897,21 +904,21 @@ export default function SceneEditorPage() {
             onClick={() => setSnapToGrid((prev) => !prev)}
           >
             <i className="bi bi-magnet me-1" aria-hidden="true" />
-            Snap {snapToGrid ? 'ON' : 'OFF'}
+            스냅 {snapToGrid ? '켜짐' : '꺼짐'}
           </button>
           {snapToGrid ? (
-            <div className="btn-group btn-group-sm" role="group" aria-label="snap mode">
+            <div className="btn-group btn-group-sm" role="group" aria-label="스냅 모드">
               <button
                 className={`btn ${snapMode === 'strict' ? 'btn-primary' : 'btn-outline-secondary'}`}
                 onClick={() => setSnapMode('strict')}
               >
-                Strict
+                엄격
               </button>
               <button
                 className={`btn ${snapMode === 'soft' ? 'btn-primary' : 'btn-outline-secondary'}`}
                 onClick={() => setSnapMode('soft')}
               >
-                Soft
+                부드럽게
               </button>
             </div>
           ) : null}
@@ -919,22 +926,22 @@ export default function SceneEditorPage() {
             className={`btn btn-sm ${smoothDrag ? 'btn-primary' : 'btn-outline-secondary'}`}
             onClick={() => setSmoothDrag((prev) => !prev)}
           >
-            Smooth {smoothDrag ? 'ON' : 'OFF'}
+            부드러운 이동 {smoothDrag ? '켜짐' : '꺼짐'}
           </button>
-          <div className="btn-group btn-group-sm" role="group" aria-label="density switch">
+          <div className="btn-group btn-group-sm" role="group" aria-label="밀도 전환">
             <button
               className={`btn ${density === 'cozy' ? 'btn-primary' : 'btn-outline-secondary'}`}
               onClick={() => setDensity('cozy')}
             >
               <i className="bi bi-arrows-collapse-vertical me-1" aria-hidden="true" />
-              <span className="d-none d-md-inline">Cozy</span>
+              <span className="d-none d-md-inline">넓게</span>
             </button>
             <button
               className={`btn ${density === 'compact' ? 'btn-primary' : 'btn-outline-secondary'}`}
               onClick={() => setDensity('compact')}
             >
               <i className="bi bi-distribute-vertical me-1" aria-hidden="true" />
-              <span className="d-none d-md-inline">Compact</span>
+              <span className="d-none d-md-inline">촘촘히</span>
             </button>
           </div>
           <button className="btn btn-primary btn-sm toolbar-icon-btn" onClick={() => void runExport()}>
@@ -944,10 +951,10 @@ export default function SceneEditorPage() {
         </div>
       </nav>
 
-      <div className="section-jump" aria-label="section navigation">
+      <div className="section-jump" aria-label="섹션 이동">
         <a href="#arrange-tools" className={`btn btn-ghost btn-sm ${activeSection === 'arrange-tools' ? 'is-active' : ''}`}>툴바</a>
         <a href="#layout-2d" className={`btn btn-ghost btn-sm ${activeSection === 'layout-2d' ? 'is-active' : ''}`}>2D 배치도</a>
-        <a href="#export-history" className={`btn btn-ghost btn-sm ${activeSection === 'export-history' ? 'is-active' : ''}`}>Export 이력</a>
+        <a href="#export-history" className={`btn btn-ghost btn-sm ${activeSection === 'export-history' ? 'is-active' : ''}`}>내보내기 이력</a>
       </div>
 
       {saveError ? (
@@ -988,7 +995,7 @@ export default function SceneEditorPage() {
                   >
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
                       <div>
-                        <strong style={{ fontSize: 14 }}>{item.name || def?.name || 'Unnamed'}</strong>
+                        <strong style={{ fontSize: 14 }}>{item.name || def?.name || '이름 없음'}</strong>
                         <p className="subtle" style={{ margin: '6px 0 0' }}>
                           x: {item.position.x} / z: {item.position.z}
                         </p>
@@ -1017,13 +1024,13 @@ export default function SceneEditorPage() {
               placeholder="이름/코드/카테고리 검색"
               value={catalogQuery}
               onChange={(e) => setCatalogQuery(e.target.value)}
-              aria-label="catalog search"
+              aria-label="카탈로그 검색"
             />
             <select
               className="form-select form-select-sm"
               value={catalogCategory}
               onChange={(e) => setCatalogCategory(e.target.value)}
-              aria-label="catalog category filter"
+              aria-label="카테고리 필터"
               style={{ marginTop: 8 }}
             >
               <option value="all">전체 카테고리</option>
@@ -1169,30 +1176,30 @@ export default function SceneEditorPage() {
             })}
 
           </div>
-          <p className="subtle" style={{ margin: '8px 0 0' }}>조작: 오브젝트 점을 드래그하거나, 캔버스 포커스 후 방향키로 이동 (step {moveStep})</p>
+          <p className="subtle" style={{ margin: '8px 0 0' }}>조작: 오브젝트 점을 드래그하거나, 캔버스 포커스 후 방향키로 이동 (간격 {moveStep})</p>
         </section>
       </section>
 
       <section id="export-history" className="plain-section">
-        <h2 style={{ marginTop: 0 }}>export 이력</h2>
+        <h2 style={{ marginTop: 0 }}>내보내기 이력</h2>
         <div style={{ display: 'grid', gap: 8, marginTop: 10 }}>
           {sceneExports.length === 0 ? (
             <p className="subtle" style={{ margin: 0 }}>
-              아직 export 이력이 없습니다.
+              아직 내보내기 이력이 없습니다.
             </p>
           ) : (
             sceneExports.map((item) => (
               <article key={item.id} className="list-row">
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
                   <strong>{item.id.slice(0, 8)}</strong>
-                  <span className="label">{item.status}</span>
+                  <span className="label">{exportStatusLabel[item.status]}</span>
                 </div>
                 <p className="subtle" style={{ margin: '6px 0 0' }}>
-                  retry {item.retryCount}/{item.retryLimit} · timeout {Math.round(item.timeoutMs / 1000)}s
+                  재시도 {item.retryCount}/{item.retryLimit} · 제한 {Math.round(item.timeoutMs / 1000)}초
                 </p>
                 {item.lastError ? (
                   <p className="subtle" style={{ margin: '6px 0 0', color: '#a03030' }}>
-                    error: {item.lastError}
+                    오류: {item.lastError}
                   </p>
                 ) : null}
                 <div style={{ marginTop: 8 }}>
@@ -1240,7 +1247,7 @@ export default function SceneEditorPage() {
             }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-              <h3 style={{ margin: 0 }}>3D Preview</h3>
+              <h3 style={{ margin: 0 }}>3D 미리보기</h3>
               <button className="btn btn-outline-secondary btn-sm" onClick={() => setShowPreviewModal(false)}>
                 <i className="bi bi-x-lg me-1" aria-hidden="true" />
                 닫기
@@ -1249,7 +1256,7 @@ export default function SceneEditorPage() {
 
             {generated.length === 0 ? (
               <p className="subtle" style={{ marginTop: 10 }}>
-                생성된 3D 오브젝트가 없습니다. 상단의 Generate 버튼을 먼저 실행하세요.
+                생성된 3D 오브젝트가 없습니다. 상단의 3D 생성 버튼을 먼저 실행하세요.
               </p>
             ) : (
               <div
