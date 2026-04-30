@@ -346,7 +346,15 @@ export default function SceneEditorPage() {
       return;
     }
 
-    setStatus(`Arrange 요청 중: ${action}`);
+    const actionLabel: Record<'align-x' | 'align-z' | 'space-x' | 'snap-grid', string> = {
+      'align-x': 'X축 정렬',
+      'align-z': 'Z축 정렬',
+      'space-x': 'X축 간격 정렬',
+      'snap-grid': '격자 정렬'
+    };
+    const label = actionLabel[action];
+
+    setStatus(`배치 정리 요청 중: ${label}`);
 
     let response: Response;
     try {
@@ -356,7 +364,7 @@ export default function SceneEditorPage() {
         body: JSON.stringify({ action })
       });
     } catch {
-      setStatus(`네트워크 오류로 Arrange 요청에 실패했습니다: ${action}`);
+      setStatus(`네트워크 오류로 배치 정리 요청에 실패했습니다: ${label}`);
       return;
     }
 
@@ -369,12 +377,12 @@ export default function SceneEditorPage() {
 
     if (!response.ok) {
       const message = await readErrorMessage(response);
-      setStatus(message ?? `Arrange 요청에 실패했습니다: ${action}`);
+      setStatus(message ?? `배치 정리 요청에 실패했습니다: ${label}`);
       return;
     }
 
     await loadInitial();
-    setStatus(`Arrange 완료: ${action}`);
+    setStatus(`배치 정리 완료: ${label}`);
   }
 
   async function runGenerate() {
