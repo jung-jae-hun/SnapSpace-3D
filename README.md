@@ -37,3 +37,11 @@ bash /Volumes/MartinData/dev-project/querensys/SnapSpace 3D/scripts/local-api-up
 ```bash
 bash /Volumes/MartinData/dev-project/querensys/SnapSpace 3D/scripts/local-web-up.sh
 ```
+
+## 도커 런타임 검증
+
+도커 스택 기동 후 웹/헬스/로그인 경로를 한 번에 확인합니다.
+
+```bash
+bash /Volumes/MartinData/dev-project/querensys/SnapSpace 3D/scripts/verify-runtime.sh
+```
