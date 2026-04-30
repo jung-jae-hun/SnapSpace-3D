@@ -346,21 +346,35 @@ export default function SceneEditorPage() {
       return;
     }
 
-    setStatus(`arrange 실행 중: ${action}`);
+    setStatus(`Arrange 요청 중: ${action}`);
 
-    const response = await fetch(`/api/scenes/${sceneId}/arrange`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action })
-    });
+    let response: Response;
+    try {
+      response = await fetch(`/api/scenes/${sceneId}/arrange`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action })
+      });
+    } catch {
+      setStatus(`네트워크 오류로 Arrange 요청에 실패했습니다: ${action}`);
+      return;
+    }
+
+    if (response.status === 401) {
+      setSceneAvailable(false);
+      setStatus('세션이 만료되었습니다. 다시 로그인해 주세요.');
+      router.replace('/');
+      return;
+    }
 
     if (!response.ok) {
-      setStatus(`arrange 실패: ${action}`);
+      const message = await readErrorMessage(response);
+      setStatus(message ?? `Arrange 요청에 실패했습니다: ${action}`);
       return;
     }
 
     await loadInitial();
-    setStatus(`arrange 완료: ${action}`);
+    setStatus(`Arrange 완료: ${action}`);
   }
 
   async function runGenerate() {
