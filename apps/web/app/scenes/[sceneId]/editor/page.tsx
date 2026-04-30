@@ -1,10 +1,18 @@
 'use client';
 
-import { OrbitControls } from '@react-three/drei';
-import { Canvas } from '@react-three/fiber';
+import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
+
+const Canvas = dynamic(
+  () => import('@react-three/fiber').then((mod) => mod.Canvas),
+  { ssr: false }
+);
+const OrbitControls = dynamic(
+  () => import('@react-three/drei').then((mod) => mod.OrbitControls),
+  { ssr: false }
+);
 
 type ActiveSection = 'arrange-tools' | 'layout-2d' | 'export-history';
 
@@ -60,6 +68,7 @@ export default function SceneEditorPage() {
   const [sceneAvailable, setSceneAvailable] = useState(true);
   const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [catalogQuery, setCatalogQuery] = useState('');
+  const [catalogCategory, setCatalogCategory] = useState<'all' | string>('all');
   const [density, setDensity] = useState<'cozy' | 'compact'>('cozy');
   const [activeSection, setActiveSection] = useState<ActiveSection>('layout-2d');
   const [snapToGrid, setSnapToGrid] = useState(true);
@@ -68,6 +77,9 @@ export default function SceneEditorPage() {
   const [smoothDrag, setSmoothDrag] = useState(true);
   const [dragging, setDragging] = useState(false);
   const [saveNotice, setSaveNotice] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [lastSavedPlacements, setLastSavedPlacements] = useState<PlacedObject[]>([]);
+  const [hasSavedSnapshot, setHasSavedSnapshot] = useState(false);
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -177,62 +189,69 @@ export default function SceneEditorPage() {
     }
   }
 
+  function clonePlacements(items: PlacedObject[]) {
+    return items.map((item) => ({
+      ...item,
+      position: { ...item.position },
+      scale: { ...item.scale }
+    }));
+  }
+
   async function loadInitial() {
     setStatus('카탈로그/씬 로드 중...');
 
-    const authRes = await fetch('/api/auth/me', { cache: 'no-store' });
-    if (authRes.status === 401) {
-      setSceneAvailable(false);
-      setStatus('로그인이 필요합니다. 로그인 페이지로 이동합니다.');
-      router.replace('/');
-      return;
-    }
+    try {
+      const authRes = await fetch('/api/auth/me', { cache: 'no-store' });
+      if (authRes.status === 401) {
+        setSceneAvailable(false);
+        setStatus('로그인이 필요합니다. 로그인 페이지로 이동합니다.');
+        router.replace('/');
+        return;
+      }
 
-    const [sceneRes, catalogRes, placementsRes, generatedRes, exportsRes] = await Promise.all([
-      fetch(`/api/scenes/${sceneId}`, { cache: 'no-store' }),
-      fetch('/api/object-definitions', { cache: 'no-store' }),
-      fetch(`/api/scenes/${sceneId}/placed-objects`, { cache: 'no-store' }),
-      fetch(`/api/scenes/${sceneId}/generated-objects`, { cache: 'no-store' }),
-      fetch(`/api/scenes/${sceneId}/exports`, { cache: 'no-store' })
-    ]);
+      const [sceneRes, catalogRes, placementsRes, generatedRes, exportsRes] = await Promise.all([
+        fetch(`/api/scenes/${sceneId}`, { cache: 'no-store' }),
+        fetch('/api/object-definitions', { cache: 'no-store' }),
+        fetch(`/api/scenes/${sceneId}/placed-objects`, { cache: 'no-store' }),
+        fetch(`/api/scenes/${sceneId}/generated-objects`, { cache: 'no-store' }),
+        fetch(`/api/scenes/${sceneId}/exports`, { cache: 'no-store' })
+      ]);
 
-    if (sceneRes.status === 401) {
-      setSceneAvailable(false);
-      setStatus('세션이 만료되었습니다. 다시 로그인해 주세요.');
-      router.replace('/');
-      return;
-    }
+      if (sceneRes.status === 401) {
+        setSceneAvailable(false);
+        setStatus('세션이 만료되었습니다. 다시 로그인해 주세요.');
+        router.replace('/');
+        return;
+      }
 
-    if (!sceneRes.ok) {
-      const message = await readErrorMessage(sceneRes);
-      setSceneAvailable(false);
-      setStatus(message ?? '씬을 찾을 수 없습니다. 씬 목록에서 다시 선택하세요.');
-      return;
-    }
+      if (!sceneRes.ok) {
+        const message = await readErrorMessage(sceneRes);
+        setSceneAvailable(false);
+        setStatus(message ?? '씬을 찾을 수 없습니다. 씬 목록에서 다시 선택하세요.');
+        return;
+      }
 
-    if (catalogRes.status === 401 || placementsRes.status === 401 || generatedRes.status === 401 || exportsRes.status === 401) {
-      setSceneAvailable(false);
-      setStatus('세션이 만료되었습니다. 다시 로그인해 주세요.');
-      router.replace('/');
-      return;
-    }
+      if (catalogRes.status === 401 || placementsRes.status === 401 || generatedRes.status === 401 || exportsRes.status === 401) {
+        setSceneAvailable(false);
+        setStatus('세션이 만료되었습니다. 다시 로그인해 주세요.');
+        router.replace('/');
+        return;
+      }
 
-    if (!catalogRes.ok || !placementsRes.ok || !generatedRes.ok) {
-      setSceneAvailable(false);
-      setStatus('로드 실패: 인증 또는 서버 상태를 확인하세요.');
-      return;
-    }
+      if (!catalogRes.ok || !placementsRes.ok || !generatedRes.ok) {
+        setSceneAvailable(false);
+        setStatus('로드 실패: 인증 또는 서버 상태를 확인하세요.');
+        return;
+      }
 
-    setSceneAvailable(true);
+      setSceneAvailable(true);
 
-    const catalogData = (await catalogRes.json()) as ObjectDefinition[];
-    const placementData = (await placementsRes.json()) as PlacedObject[];
-    const generatedData = (await generatedRes.json()) as GeneratedObject[];
-    const exportData = exportsRes.ok ? ((await exportsRes.json()) as SceneExport[]) : [];
+      const catalogData = (await catalogRes.json()) as ObjectDefinition[];
+      const placementData = (await placementsRes.json()) as PlacedObject[];
+      const generatedData = (await generatedRes.json()) as GeneratedObject[];
+      const exportData = exportsRes.ok ? ((await exportsRes.json()) as SceneExport[]) : [];
 
-    setCatalog(catalogData);
-    setPlacements(
-      placementData.map((item) => ({
+      const normalizedPlacements = placementData.map((item) => ({
         id: item.id,
         objectDefinitionId: item.objectDefinitionId,
         name: item.name,
@@ -247,12 +266,21 @@ export default function SceneEditorPage() {
           y: Number(item.scale?.y ?? 1),
           z: Number(item.scale?.z ?? 1)
         }
-      }))
-    );
-    setGenerated(generatedData);
-    setSceneExports(exportData);
+      }));
 
-    setStatus('로드 완료');
+      setCatalog(catalogData);
+      setPlacements(normalizedPlacements);
+      setGenerated(generatedData);
+      setSceneExports(exportData);
+      setLastSavedPlacements(clonePlacements(normalizedPlacements));
+      setHasSavedSnapshot(true);
+      setSaveError(null);
+
+      setStatus('로드 완료');
+    } catch {
+      setSceneAvailable(false);
+      setStatus('네트워크 또는 서버 오류로 로드에 실패했습니다. 잠시 후 다시 시도해 주세요.');
+    }
   }
 
   const catalogById = useMemo(
@@ -272,14 +300,31 @@ export default function SceneEditorPage() {
 
   const filteredCatalog = useMemo(() => {
     const query = catalogQuery.trim().toLowerCase();
-    if (!query) {
-      return catalog;
-    }
+    const selectedCategory = catalogCategory;
+
     return catalog.filter((item) => {
+      if (selectedCategory !== 'all' && item.category !== selectedCategory) {
+        return false;
+      }
+
+      if (!query) {
+        return true;
+      }
+
       const haystack = `${item.name} ${item.code} ${item.category}`.toLowerCase();
       return haystack.includes(query);
     });
-  }, [catalog, catalogQuery]);
+  }, [catalog, catalogQuery, catalogCategory]);
+
+  const catalogCategories = useMemo(() => {
+    const set = new Set<string>();
+    for (const item of catalog) {
+      if (item.category) {
+        set.add(item.category);
+      }
+    }
+    return [...set].sort((a, b) => a.localeCompare(b));
+  }, [catalog]);
 
   function scheduleAutosave(nextPlacements: PlacedObject[]) {
     if (!sceneAvailable || !sceneId) {
@@ -377,21 +422,39 @@ export default function SceneEditorPage() {
     setSaving(true);
     setStatus('자동저장 중...');
 
-    const response = await fetch(`/api/scenes/${sceneId}/placed-objects/bulk`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        mode: 'replace',
-        items: nextPlacements.map((item) => ({
-          id: item.id,
-          objectDefinitionId: item.objectDefinitionId,
-          name: item.name,
-          position: item.position,
-          rotationY: item.rotationY,
-          scale: item.scale
-        }))
-      })
-    });
+    let response: Response;
+    try {
+      response = await fetch(`/api/scenes/${sceneId}/placed-objects/bulk`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mode: 'replace',
+          items: nextPlacements.map((item) => ({
+            id: item.id,
+            objectDefinitionId: item.objectDefinitionId,
+            name: item.name,
+            position: item.position,
+            rotationY: item.rotationY,
+            scale: item.scale
+          }))
+        })
+      });
+    } catch {
+      setSaving(false);
+      if (retryCount < 1) {
+        setStatus('자동저장 재시도 중...');
+        window.setTimeout(() => {
+          void saveScene(nextPlacements, retryCount + 1);
+        }, 500);
+        return;
+      }
+
+      const errorMessage = '네트워크 오류로 자동저장에 실패했습니다.';
+      setStatus(errorMessage);
+      setSaveError(errorMessage);
+      setSaveNotice('저장 실패');
+      return;
+    }
 
     setSaving(false);
 
@@ -402,7 +465,10 @@ export default function SceneEditorPage() {
           clearTimeout(saveTimer.current);
         }
         const message = await readErrorMessage(response);
-        setStatus(message ?? '씬이 존재하지 않아 자동저장을 중단했습니다. 씬 목록에서 다시 선택하세요.');
+        const errorMessage =
+          message ?? '씬이 존재하지 않아 자동저장을 중단했습니다. 씬 목록에서 다시 선택하세요.';
+        setStatus(errorMessage);
+        setSaveError(errorMessage);
         return;
       }
 
@@ -415,19 +481,46 @@ export default function SceneEditorPage() {
         return;
       }
 
-      setStatus(message ?? '자동저장 실패');
+      const errorMessage = message ?? '자동저장 실패';
+      setStatus(errorMessage);
+      setSaveError(errorMessage);
       setSaveNotice('저장 실패');
       return;
     }
 
     setStatus('자동저장 완료');
     setSaveNotice('저장 완료');
+    setSaveError(null);
+    setLastSavedPlacements(clonePlacements(nextPlacements));
+    setHasSavedSnapshot(true);
     if (noticeTimer.current) {
       clearTimeout(noticeTimer.current);
     }
     noticeTimer.current = setTimeout(() => {
       setSaveNotice(null);
     }, 1400);
+  }
+
+  function rollbackPlacements() {
+    if (!hasSavedSnapshot) {
+      return;
+    }
+
+    const restored = clonePlacements(lastSavedPlacements);
+    latestPlacementsRef.current = restored;
+    setPlacements(restored);
+    setActiveIndex(null);
+    setSaveError(null);
+    setStatus('마지막 저장 상태로 되돌렸습니다.');
+  }
+
+  async function retrySaveNow() {
+    if (!sceneAvailable) {
+      return;
+    }
+
+    setStatus('저장 재시도 중...');
+    await saveScene(latestPlacementsRef.current, 0);
   }
 
   function addFromCatalog(def: ObjectDefinition) {
@@ -807,6 +900,24 @@ export default function SceneEditorPage() {
         <a href="#export-history" className={`btn btn-ghost btn-sm ${activeSection === 'export-history' ? 'is-active' : ''}`}>Export 이력</a>
       </div>
 
+      {saveError ? (
+        <div className="alert alert-warning" role="alert" style={{ marginBottom: 12 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+            <span>{saveError}</span>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button className="btn btn-outline-secondary btn-sm" onClick={() => void retrySaveNow()}>
+                <i className="bi bi-arrow-repeat me-1" aria-hidden="true" />
+                저장 재시도
+              </button>
+              <button className="btn btn-outline-secondary btn-sm" onClick={rollbackPlacements} disabled={!hasSavedSnapshot}>
+                <i className="bi bi-arrow-counterclockwise me-1" aria-hidden="true" />
+                마지막 저장으로 되돌리기
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       <section className="content-layout">
         <aside>
           <h2 style={{ marginTop: 0, marginBottom: 10 }}>등록 오브젝트</h2>
@@ -858,6 +969,20 @@ export default function SceneEditorPage() {
               onChange={(e) => setCatalogQuery(e.target.value)}
               aria-label="catalog search"
             />
+            <select
+              className="form-select form-select-sm"
+              value={catalogCategory}
+              onChange={(e) => setCatalogCategory(e.target.value)}
+              aria-label="catalog category filter"
+              style={{ marginTop: 8 }}
+            >
+              <option value="all">전체 카테고리</option>
+              {catalogCategories.map((category) => (
+                <option key={category} value={category}>
+                  {category}
+                </option>
+              ))}
+            </select>
             <p className="subtle" style={{ margin: '8px 0 10px' }}>
               {filteredCatalog.length} / {catalog.length} 표시 중
             </p>

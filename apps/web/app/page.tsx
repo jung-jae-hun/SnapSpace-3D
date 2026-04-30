@@ -11,6 +11,8 @@ export default function HomePage() {
   const [email, setEmail] = useState('owner@snapspace.io');
   const [name, setName] = useState('Snap Owner');
   const [submitting, setSubmitting] = useState(false);
+  const [preparingWorkspace, setPreparingWorkspace] = useState(false);
+  const [canRetryWorkspace, setCanRetryWorkspace] = useState(false);
   const [message, setMessage] = useState('');
 
   function toEpoch(value?: string | null) {
@@ -31,7 +33,7 @@ export default function HomePage() {
         description: 'Auto-created workspace'
       })
     });
-
+                    {preparingWorkspace ? '작업 화면 준비 중...' : '작업 화면 다시 시도'}
     if (!createProjectRes.ok) {
       throw new Error('프로젝트 자동 생성 실패');
     }
@@ -112,9 +114,26 @@ export default function HomePage() {
     return createdSceneId;
   }
 
+  async function moveToWorkspace() {
+    setPreparingWorkspace(true);
+    setMessage('작업 화면 준비 중...');
+
+    try {
+      const sceneId = await ensureWorkspaceSceneId();
+      setCanRetryWorkspace(false);
+      router.push(`/scenes/${sceneId}/editor`);
+    } catch {
+      setCanRetryWorkspace(true);
+      setMessage('로그인은 성공했지만 작업 화면 준비에 실패했습니다. 다시 시도해 주세요.');
+    } finally {
+      setPreparingWorkspace(false);
+    }
+  }
+
   async function handleLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSubmitting(true);
+    setCanRetryWorkspace(false);
     setMessage('로그인 중...');
 
     try {
@@ -131,10 +150,9 @@ export default function HomePage() {
       }
 
       setMessage('로그인 성공, 작업 화면으로 이동 중...');
-      const sceneId = await ensureWorkspaceSceneId();
-      router.push(`/scenes/${sceneId}/editor`);
+      await moveToWorkspace();
     } catch {
-      setMessage('로그인은 성공했지만 작업 화면 준비에 실패했습니다.');
+      setMessage('로그인 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.');
     } finally {
       setSubmitting(false);
     }
@@ -194,6 +212,20 @@ export default function HomePage() {
                   <i className="bi bi-door-open me-1" aria-hidden="true" />
                   {submitting ? '로그인 중...' : '로그인'}
                 </button>
+
+                {canRetryWorkspace && (
+                  <button
+                    className="btn btn-outline-secondary w-100"
+                    type="button"
+                    onClick={() => {
+                      void moveToWorkspace();
+                    }}
+                    disabled={preparingWorkspace}
+                  >
+                    <i className="bi bi-arrow-repeat me-1" aria-hidden="true" />
+                    {preparingWorkspace ? '작업 화면 준비 중...' : '작업 화면 다시 시도'}
+                  </button>
+                )}
               </form>
 
               <div className="alert alert-light border mt-4 mb-0 py-2" role="status">
