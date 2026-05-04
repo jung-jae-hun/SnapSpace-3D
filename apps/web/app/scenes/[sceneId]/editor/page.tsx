@@ -108,6 +108,7 @@ const AI_SOURCE_ALLOWED_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp'
 const LIFECYCLE_INACTIVE_TAG = 'lifecycle:inactive';
 const LIFECYCLE_VERSION_PREFIX = 'lifecycle:version:';
 const LIFECYCLE_FAMILY_PREFIX = 'lifecycle:family:';
+const MAX_PERSISTED_LIFECYCLE_EXPANDED_IDS = 40;
 const AI_ERROR_POLICIES: Record<string, AiErrorPolicy> = {
   cancelled_by_user: {
     message: '생성 작업이 사용자에 의해 취소되었습니다.',
@@ -419,51 +420,7 @@ export default function SceneEditorPage() {
   }, [catalogIncludeInactive, catalogSourceFilter, sceneAvailable, sceneId]);
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (lifecycleActionFilter === 'all') {
-      params.delete('lifecycleAction');
-    } else {
-      params.set('lifecycleAction', lifecycleActionFilter);
-    }
-
-    if (catalogSourceFilter === 'all') {
-      params.delete('catalogSource');
-    } else {
-      params.set('catalogSource', catalogSourceFilter);
-    }
-
-    if (catalogIncludeInactive) {
-      params.set('catalogIncludeInactive', 'true');
-    } else {
-      params.delete('catalogIncludeInactive');
-    }
-
-    if (catalogCategory === 'all') {
-      params.delete('catalogCategory');
-    } else {
-      params.set('catalogCategory', catalogCategory);
-    }
-
-    const normalizedCatalogQuery = catalogQuery.trim();
-    if (normalizedCatalogQuery) {
-      params.set('catalogQuery', normalizedCatalogQuery);
-    } else {
-      params.delete('catalogQuery');
-    }
-
-    if (lifecycleDetailTruncateMode === 'short') {
-      params.delete('lifecycleDetailMode');
-    } else {
-      params.set('lifecycleDetailMode', lifecycleDetailTruncateMode);
-    }
-
-    if (catalogLatestByFamilyOnly) {
-      params.delete('catalogLatest');
-    } else {
-      params.set('catalogLatest', 'false');
-    }
-
-    const nextQuery = params.toString();
+    const nextQuery = buildSceneEditorQueryParams().toString();
     const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ''}${window.location.hash}`;
     window.history.replaceState(null, '', nextUrl);
   }, [
@@ -475,6 +432,60 @@ export default function SceneEditorPage() {
     lifecycleDetailTruncateMode,
     catalogLatestByFamilyOnly
   ]);
+
+  function setQueryParamIfNotDefault(
+    params: URLSearchParams,
+    key: string,
+    value: string,
+    defaultValue: string
+  ) {
+    if (value === defaultValue) {
+      params.delete(key);
+      return;
+    }
+    params.set(key, value);
+  }
+
+  function setBooleanQueryParamIfTrue(params: URLSearchParams, key: string, value: boolean) {
+    if (value) {
+      params.set(key, 'true');
+      return;
+    }
+    params.delete(key);
+  }
+
+  function setBooleanQueryParamIfFalse(params: URLSearchParams, key: string, value: boolean) {
+    if (!value) {
+      params.set(key, 'false');
+      return;
+    }
+    params.delete(key);
+  }
+
+  function buildSceneEditorQueryParams() {
+    const params = new URLSearchParams(window.location.search);
+
+    setQueryParamIfNotDefault(params, 'lifecycleAction', lifecycleActionFilter, 'all');
+    setQueryParamIfNotDefault(params, 'catalogSource', catalogSourceFilter, 'all');
+    setBooleanQueryParamIfTrue(params, 'catalogIncludeInactive', catalogIncludeInactive);
+    setQueryParamIfNotDefault(params, 'catalogCategory', catalogCategory, 'all');
+    setQueryParamIfNotDefault(
+      params,
+      'lifecycleDetailMode',
+      lifecycleDetailTruncateMode,
+      'short'
+    );
+    setBooleanQueryParamIfFalse(params, 'catalogLatest', catalogLatestByFamilyOnly);
+
+    const normalizedCatalogQuery = catalogQuery.trim();
+    if (normalizedCatalogQuery) {
+      params.set('catalogQuery', normalizedCatalogQuery);
+    } else {
+      params.delete('catalogQuery');
+    }
+
+    return params;
+  }
 
   function buildLifecycleExpandedStorageKey(definitionId: string) {
     return `scene-editor:lifecycle-expanded:${sceneId}:${definitionId}`;
@@ -493,9 +504,14 @@ export default function SceneEditorPage() {
       }
 
       const next: Record<string, boolean> = {};
+      let acceptedCount = 0;
       for (const item of parsed) {
+        if (acceptedCount >= MAX_PERSISTED_LIFECYCLE_EXPANDED_IDS) {
+          break;
+        }
         if (typeof item === 'string' && item.trim().length > 0) {
           next[item] = true;
+          acceptedCount += 1;
         }
       }
       return next;
@@ -511,7 +527,8 @@ export default function SceneEditorPage() {
 
     const expandedIds = Object.entries(lifecycleExpandedEventIds)
       .filter(([, expanded]) => expanded)
-      .map(([eventId]) => eventId);
+      .map(([eventId]) => eventId)
+      .slice(0, MAX_PERSISTED_LIFECYCLE_EXPANDED_IDS);
 
     try {
       window.sessionStorage.setItem(
