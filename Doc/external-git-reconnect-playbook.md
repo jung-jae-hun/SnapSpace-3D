@@ -58,16 +58,20 @@ git merge --no-ff feat/<topic>
 
 ## 5. 재연결 명령 (권장: SSH)
 
-1) SSH 키 등록 확인
+1) SSH 키 등록/인증 확인
 
 ```bash
-ssh -T git@github.com
+ssh -T git@martin-personal
 ```
+
+참고:
+- GitHub는 SSH 인증 성공 시에도 `"does not provide shell access"`와 함께 exit code 1을 반환할 수 있다.
+- 인증 성공 판정은 exit code보다 `"successfully authenticated"` 문구를 우선한다.
 
 2) 원격 전환
 
 ```bash
-git remote set-url origin git@github.com:jung-jae-hun/SnapSpace-3D.git
+git remote set-url origin git@martin-personal:jung-jae-hun/SnapSpace-3D.git
 ```
 
 3) 업로드

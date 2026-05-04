@@ -17,6 +17,7 @@
     "dev:doctor": "bash ./scripts/local-runtime-doctor.sh",
     "dev:provider:local:stub": "node ./scripts/local-provider-stub.mjs",
     "dev:provider:local:verify": "bash ./scripts/verify-local-provider.sh",
+    "dev:web:ai-routes:verify": "node ./scripts/verify-web-ai-generation-routes.mjs",
     "dev:provider:local:smoke": "AI_PROVIDER_MODE=local bash ./scripts/verify-local-provider.sh",
     "dev:provider:local:verify:stub": "sh -c 'node ./scripts/local-provider-stub.mjs & pid=$!; trap \"kill $pid 2>/dev/null || true\" EXIT; sleep 1; pnpm dev:provider:local:verify'",
     "dev:provider:local:e2e": "bash ./scripts/verify-ai-local-e2e.sh",

@@ -13,6 +13,9 @@ TMP_DIR="$(mktemp -d)"
 COOKIE_JAR="$TMP_DIR/cookies.txt"
 PNG_FILE="$TMP_DIR/source.png"
 RESP_FILE="$TMP_DIR/resp.json"
+RESP_HEADERS_FILE="$TMP_DIR/resp.headers"
+RESP_STATUS=""
+RESP_CONTENT_TYPE=""
 
 cleanup() {
   rm -rf "$TMP_DIR"
@@ -26,27 +29,55 @@ request_json() {
   local method="$1"
   local url="$2"
   local body="${3:-}"
+  : > "$RESP_HEADERS_FILE"
   if [[ -n "$body" ]]; then
-    curl -sS --max-time "$CURL_MAX_TIME" -b "$COOKIE_JAR" -c "$COOKIE_JAR" \
-      -H 'Content-Type: application/json' -X "$method" "$url" --data "$body" > "$RESP_FILE"
+    RESP_STATUS="$(curl -sS --max-time "$CURL_MAX_TIME" -b "$COOKIE_JAR" -c "$COOKIE_JAR" \
+      -D "$RESP_HEADERS_FILE" -o "$RESP_FILE" -w '%{http_code}' \
+      -H 'Content-Type: application/json' -X "$method" "$url" --data "$body")"
   else
-    curl -sS --max-time "$CURL_MAX_TIME" -b "$COOKIE_JAR" -c "$COOKIE_JAR" \
-      -X "$method" "$url" > "$RESP_FILE"
+    RESP_STATUS="$(curl -sS --max-time "$CURL_MAX_TIME" -b "$COOKIE_JAR" -c "$COOKIE_JAR" \
+      -D "$RESP_HEADERS_FILE" -o "$RESP_FILE" -w '%{http_code}' \
+      -X "$method" "$url")"
   fi
+  RESP_CONTENT_TYPE="$(awk -F': ' 'tolower($1)=="content-type" {gsub("\r", "", $2); print $2; exit}' "$RESP_HEADERS_FILE")"
 }
 
 request_json_api() {
   local method="$1"
   local url="$2"
   local body="${3:-}"
+  : > "$RESP_HEADERS_FILE"
   if [[ -n "$body" ]]; then
-    curl -sS --max-time "$CURL_MAX_TIME" \
+    RESP_STATUS="$(curl -sS --max-time "$CURL_MAX_TIME" \
+      -D "$RESP_HEADERS_FILE" -o "$RESP_FILE" -w '%{http_code}' \
       -H "Authorization: Bearer $ACCESS_TOKEN" \
-      -H 'Content-Type: application/json' -X "$method" "$url" --data "$body" > "$RESP_FILE"
+      -H 'Content-Type: application/json' -X "$method" "$url" --data "$body")"
   else
-    curl -sS --max-time "$CURL_MAX_TIME" \
+    RESP_STATUS="$(curl -sS --max-time "$CURL_MAX_TIME" \
+      -D "$RESP_HEADERS_FILE" -o "$RESP_FILE" -w '%{http_code}' \
       -H "Authorization: Bearer $ACCESS_TOKEN" \
-      -X "$method" "$url" > "$RESP_FILE"
+      -X "$method" "$url")"
+  fi
+  RESP_CONTENT_TYPE="$(awk -F': ' 'tolower($1)=="content-type" {gsub("\r", "", $2); print $2; exit}' "$RESP_HEADERS_FILE")"
+}
+
+print_response_debug() {
+  echo "[ai-e2e] response status=${RESP_STATUS:-unknown} content-type=${RESP_CONTENT_TYPE:-unknown}"
+  if [[ -s "$RESP_FILE" ]]; then
+    node -e '
+const fs = require("node:fs");
+const content = fs.readFileSync(process.argv[1], "utf8");
+const trimmed = content.trim();
+if (!trimmed) {
+  process.exit(0);
+}
+try {
+  const parsed = JSON.parse(trimmed);
+  process.stdout.write(JSON.stringify(parsed, null, 2) + "\n");
+} catch {
+  process.stdout.write(trimmed.slice(0, 1200) + "\n");
+}
+' "$RESP_FILE"
   fi
 }
 
@@ -78,13 +109,13 @@ curl -sS --max-time "$CURL_MAX_TIME" -H 'Content-Type: application/json' \
 ACCESS_TOKEN="$(json_get accessToken || true)"
 if [[ -z "$ACCESS_TOKEN" ]]; then
   echo "[ai-e2e] FAIL: access token missing"
-  cat "$RESP_FILE"
+  print_response_debug
   exit 1
 fi
 
 if ! grep -q 'snapspace_access_token' "$COOKIE_JAR"; then
   echo "[ai-e2e] FAIL: login cookie missing"
-  cat "$RESP_FILE"
+  print_response_debug
   exit 1
 fi
 
@@ -93,7 +124,7 @@ request_json "POST" "$WEB_BASE/api/projects" '{"name":"AI E2E Project","descript
 PROJECT_ID="$(json_get id || true)"
 if [[ -z "$PROJECT_ID" ]]; then
   echo "[ai-e2e] FAIL: project create failed"
-  cat "$RESP_FILE"
+  print_response_debug
   exit 1
 fi
 
@@ -102,7 +133,7 @@ request_json "POST" "$WEB_BASE/api/projects/$PROJECT_ID/scenes" '{"name":"AI E2E
 SCENE_ID="$(json_get id || true)"
 if [[ -z "$SCENE_ID" ]]; then
   echo "[ai-e2e] FAIL: scene create failed"
-  cat "$RESP_FILE"
+  print_response_debug
   exit 1
 fi
 
@@ -114,7 +145,7 @@ request_json "POST" "$WEB_BASE/api/assets/upload-url" "{\"objectKey\":\"$OBJECT_
 UPLOAD_URL="$(json_get uploadUrl || true)"
 if [[ -z "$UPLOAD_URL" ]]; then
   echo "[ai-e2e] FAIL: upload url missing"
-  cat "$RESP_FILE"
+  print_response_debug
   exit 1
 fi
 
@@ -131,7 +162,7 @@ request_json "POST" "$WEB_BASE/api/ai/generations" "{\"sceneId\":\"$SCENE_ID\",\
 GEN_ID="$(json_get id || true)"
 if [[ -z "$GEN_ID" ]]; then
   echo "[ai-e2e] FAIL: generation create failed"
-  cat "$RESP_FILE"
+  print_response_debug
   exit 1
 fi
 
@@ -149,7 +180,7 @@ while [[ "$attempt" -le "$POLL_MAX" ]]; do
 
   if [[ "$STATUS" == "failed" ]]; then
     echo "[ai-e2e] FAIL: generation status failed"
-    cat "$RESP_FILE"
+    print_response_debug
     exit 1
   fi
 
@@ -159,7 +190,7 @@ done
 
 if [[ "$STATUS" != "ready" ]]; then
   echo "[ai-e2e] FAIL: generation did not reach ready"
-  cat "$RESP_FILE"
+  print_response_debug
   exit 1
 fi
 
@@ -168,7 +199,7 @@ request_json "POST" "$WEB_BASE/api/ai/generations/$GEN_ID/promote"
 OBJECT_DEF_ID="$(json_get id || true)"
 if [[ -z "$OBJECT_DEF_ID" ]]; then
   echo "[ai-e2e] FAIL: promote failed"
-  cat "$RESP_FILE"
+  print_response_debug
   exit 1
 fi
 
@@ -177,7 +208,7 @@ request_json_api "POST" "$API_BASE/object-definitions/from-generation/$GEN_ID"
 OBJECT_DEF_ALIAS_ID="$(json_get id || true)"
 if [[ -z "$OBJECT_DEF_ALIAS_ID" ]]; then
   echo "[ai-e2e] FAIL: alias promote failed"
-  cat "$RESP_FILE"
+  print_response_debug
   exit 1
 fi
 

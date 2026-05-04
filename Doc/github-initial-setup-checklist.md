@@ -12,6 +12,7 @@
 
 ```bash
 git bundle create ../SnapSpace-3D-backup-$(date +%Y%m%d-%H%M%S).bundle --all
+git remote set-url origin git@martin-personal:jung-jae-hun/SnapSpace-3D.git
 git remote -v
 git ls-remote origin
 ```
@@ -96,4 +97,15 @@ git push origin v0.1.0
 git clone ../SnapSpace-3D-backup-YYYYMMDD-HHMMSS.bundle snapspace-3d-recovery
 cd snapspace-3d-recovery
 git log --oneline --decorate -n 20
+```
+
+## 6) 릴리즈 전 최종 게이트 (잠금)
+
+아래 명령을 모두 통과한 커밋만 `main` 릴리즈 기준으로 사용합니다.
+
+```bash
+pnpm run ci:quality
+pnpm dev:docker:verify
+pnpm dev:web:ai-routes:verify
+pnpm smoke:lifecycle
 ```

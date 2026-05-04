@@ -49,7 +49,7 @@ jobs:
         run: pnpm dev:docker:restart
 
       - name: Verify runtime
-        if: ${{ github.event_name == 'schedule' || inputs.runRuntimeVerify }}
+        if: ${{ github.event_name == 'schedule' || inputs.runRuntimeVerify || inputs.runAiLocalE2E }}
         run: pnpm dev:docker:verify
 
       - name: Run smoke flow

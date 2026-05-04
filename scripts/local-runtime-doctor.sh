@@ -34,3 +34,11 @@ echo
 echo "[doctor] Notes:"
 echo "- Docker often occupies 8080; local API default is 8081 in local-api-up.sh"
 echo "- Local web default is 3400 to avoid conflicts with Docker web on 3300"
+
+if docker ps --format '{{.Names}}' | grep -qx 'snapspace-web-dev'; then
+  if docker logs --tail 120 snapspace-web-dev 2>&1 | grep -Eqi 'module not found|turbopack|cannot resolve'; then
+    echo
+    echo "[doctor] Warning: snapspace-web-dev logs show Turbopack/module resolution errors."
+    echo "[doctor] Recovery: docker restart snapspace-web-dev && pnpm dev:docker:verify"
+  fi
+fi

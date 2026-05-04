@@ -42,6 +42,14 @@ retry_http_code() {
   return 0
 }
 
+print_turbopack_hint_if_needed() {
+  local body_file="$1"
+  if grep -Eqi 'module not found|turbopack|next/dist|"/_error"|cannot resolve' "$body_file"; then
+    echo "[verify:runtime] hint: Next.js dev compile state may be stale (Turbopack/module resolution issue)."
+    echo "[verify:runtime] hint: run 'docker restart snapspace-web-dev' then rerun 'pnpm dev:docker:verify'."
+  fi
+}
+
 usage() {
   echo "Usage: bash scripts/verify-runtime.sh [options]"
   echo ""
@@ -109,6 +117,7 @@ WEB_CODE="$(retry_http_code "GET" "http://localhost:${WEB_PORT}/api/auth/me" "$W
 if [[ "$WEB_CODE" != "401" ]]; then
   echo "[verify:runtime] FAIL: web proxy status=$WEB_CODE (expected 401)"
   cat "$WEB_OUT" || true
+  print_turbopack_hint_if_needed "$WEB_OUT"
   echo
   exit 1
 fi
@@ -129,6 +138,7 @@ if [[ "$LOGIN_CODE" != "200" ]]; then
   echo "[verify:runtime] FAIL: web login status=$LOGIN_CODE"
   echo "[verify:runtime] login body:"
   cat "$LOGIN_OUT"
+  print_turbopack_hint_if_needed "$LOGIN_OUT"
   echo
   exit 1
 fi
@@ -136,6 +146,7 @@ fi
 if ! grep -q '"user"' "$LOGIN_OUT"; then
   echo "[verify:runtime] FAIL: login response does not include user payload"
   cat "$LOGIN_OUT"
+  print_turbopack_hint_if_needed "$LOGIN_OUT"
   echo
   exit 1
 fi
