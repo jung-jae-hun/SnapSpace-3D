@@ -176,6 +176,9 @@ export default function SceneEditorPage() {
   >({});
   const [catalogHighlightedId, setCatalogHighlightedId] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [lifecycleCsvExportScope, setLifecycleCsvExportScope] = useState<'filtered' | 'all'>(
+    'filtered'
+  );
   const [density, setDensity] = useState<'cozy' | 'compact'>('cozy');
   const [activeSection, setActiveSection] = useState<ActiveSection>('layout-2d');
   const [snapToGrid, setSnapToGrid] = useState(true);
@@ -219,6 +222,7 @@ export default function SceneEditorPage() {
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const catalogHighlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const catalogFilterSyncReadyRef = useRef(false);
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const dragIndexRef = useRef<number | null>(null);
   const dragStartRef = useRef<{ x: number; y: number } | null>(null);
@@ -372,7 +376,24 @@ export default function SceneEditorPage() {
     if (includeInactive === 'true' || includeInactive === '1') {
       setCatalogIncludeInactive(true);
     }
+
+    catalogFilterSyncReadyRef.current = true;
   }, []);
+
+  useEffect(() => {
+    if (!catalogFilterSyncReadyRef.current) {
+      return;
+    }
+    if (!sceneAvailable || !sceneId) {
+      return;
+    }
+
+    void fetchCatalogOnly({
+      includeInactive: catalogIncludeInactive,
+      source: catalogSourceFilter,
+      silent: true
+    });
+  }, [catalogIncludeInactive, catalogSourceFilter, sceneAvailable, sceneId]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -766,6 +787,13 @@ export default function SceneEditorPage() {
     }
   }
 
+  function truncateLifecycleDetailValue(value: string, maxLength = 100) {
+    if (value.length <= maxLength) {
+      return value;
+    }
+    return `${value.slice(0, maxLength)}...`;
+  }
+
   function isUnresolvedLifecycleReference(key: string, value: unknown) {
     return (
       isObjectDefinitionRefKey(key) &&
@@ -927,7 +955,10 @@ export default function SceneEditorPage() {
   }
 
   function exportLifecycleEventsCsv() {
-    const rows = filteredLifecycleEvents.map((event) => {
+    const sourceEvents =
+      lifecycleCsvExportScope === 'all' ? lifecycleEvents : filteredLifecycleEvents;
+
+    const rows = sourceEvents.map((event) => {
       const unresolvedRefCount = getLifecycleDetailEntries(event.details).filter(
         (entry) => entry.unresolvedRef
       ).length;
@@ -962,9 +993,10 @@ export default function SceneEditorPage() {
       `# sceneId=${sceneId}`,
       `# lifecycleTarget=${lifecycleEventsTargetName ?? lifecycleEventsTargetId ?? 'n/a'}`,
       `# lifecycleActionFilter=${lifecycleActionFilter}`,
+      `# csvExportScope=${lifecycleCsvExportScope}`,
       `# catalogSourceFilter=${catalogSourceFilter}`,
       `# catalogIncludeInactive=${catalogIncludeInactive ? 'true' : 'false'}`,
-      `# totalEvents=${filteredLifecycleEvents.length}`,
+      `# totalEvents=${sourceEvents.length}`,
       `# unresolvedRefs=${lifecycleUnresolvedSummary.unresolvedCount}`
     ];
 
@@ -973,7 +1005,7 @@ export default function SceneEditorPage() {
     const url = URL.createObjectURL(blob);
 
     const date = new Date().toISOString().replace(/[:.]/g, '-');
-    const fileName = `lifecycle-events-${sceneId}-${date}.csv`;
+    const fileName = `lifecycle-events-${sceneId}-${lifecycleCsvExportScope}-${date}.csv`;
     const link = document.createElement('a');
     link.href = url;
     link.download = fileName;
@@ -3113,9 +3145,25 @@ export default function SceneEditorPage() {
                             className="btn btn-outline-secondary btn-sm"
                             type="button"
                             onClick={exportLifecycleEventsCsv}
-                            disabled={filteredLifecycleEvents.length === 0}
+                            disabled={
+                              lifecycleCsvExportScope === 'all'
+                                ? lifecycleEvents.length === 0
+                                : filteredLifecycleEvents.length === 0
+                            }
                           >
                             CSV 내보내기
+                          </button>
+                          <button
+                            className="btn btn-outline-secondary btn-sm"
+                            type="button"
+                            onClick={() =>
+                              setLifecycleCsvExportScope((prev) =>
+                                prev === 'filtered' ? 'all' : 'filtered'
+                              )
+                            }
+                            title="CSV 내보내기 범위 전환"
+                          >
+                            CSV 범위: {lifecycleCsvExportScope === 'filtered' ? '필터' : '전체'}
                           </button>
                         </div>
                       </div>
@@ -3259,7 +3307,10 @@ export default function SceneEditorPage() {
                                       style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}
                                     >
                                       <p className="subtle" style={{ margin: 0 }}>
-                                        {formatLifecycleDetailKey(entry.key)}: {entry.value}
+                                        {formatLifecycleDetailKey(entry.key)}:{' '}
+                                        <span title={entry.value}>
+                                          {truncateLifecycleDetailValue(entry.value)}
+                                        </span>
                                       </p>
                                       {entry.unresolvedRef ? (
                                         <span
