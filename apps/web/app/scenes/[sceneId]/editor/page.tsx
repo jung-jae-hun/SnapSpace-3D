@@ -390,6 +390,11 @@ export default function SceneEditorPage() {
       setCatalogQuery(query);
     }
 
+    const detailMode = params.get('lifecycleDetailMode');
+    if (detailMode === 'short' || detailMode === 'long') {
+      setLifecycleDetailTruncateMode(detailMode);
+    }
+
     catalogFilterSyncReadyRef.current = true;
   }, []);
 
@@ -441,10 +446,23 @@ export default function SceneEditorPage() {
       params.delete('catalogQuery');
     }
 
+    if (lifecycleDetailTruncateMode === 'short') {
+      params.delete('lifecycleDetailMode');
+    } else {
+      params.set('lifecycleDetailMode', lifecycleDetailTruncateMode);
+    }
+
     const nextQuery = params.toString();
     const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ''}${window.location.hash}`;
     window.history.replaceState(null, '', nextUrl);
-  }, [lifecycleActionFilter, catalogSourceFilter, catalogIncludeInactive, catalogCategory, catalogQuery]);
+  }, [
+    lifecycleActionFilter,
+    catalogSourceFilter,
+    catalogIncludeInactive,
+    catalogCategory,
+    catalogQuery,
+    lifecycleDetailTruncateMode
+  ]);
 
   async function readErrorMessage(response: Response) {
     const payload = await readErrorPayload(response);
