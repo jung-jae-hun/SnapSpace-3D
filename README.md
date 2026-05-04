@@ -14,11 +14,12 @@ GitHub 신규 저장소 초기 설정 체크리스트는 아래 문서를 참고
 현재 lifecycle/editor 영역은 안정화 구간으로 운영합니다.
 
 - 신규 기능 추가 금지: `apps/web/app/scenes/[sceneId]/editor/page.tsx`와 lifecycle 관련 API/워크플로는 버그 수정/운영 안정화만 허용
-- 필수 게이트 고정: 아래 3개가 모두 통과하지 않으면 머지하지 않음
+- 필수 게이트 고정: 아래 4개가 모두 통과하지 않으면 머지하지 않음
 
 ```bash
 pnpm --filter @snapspace/web typecheck
 pnpm dev:docker:verify
+pnpm dev:web:ai-routes:verify
 pnpm smoke:lifecycle
 ```
 
@@ -144,6 +145,8 @@ pnpm smoke:lifecycle
 : `web-proxy(auth/me)=401`, `health=200`, `login=200`이 아니면 실패
 - `pnpm smoke:lifecycle`
 : 스크립트 종료 코드가 0이 아니거나 `.tmp/smoke-lifecycle/*.json` 리포트가 생성되지 않으면 실패
+- `pnpm dev:web:ai-routes:verify`
+: AI generation web proxy(`GET /:id`, `POST /:id/cancel`, `POST /:id/promote`)에서 Unauthorized(401) / invalid action(404) / 정상 동작이 모두 확인되지 않으면 실패
 - 스케줄 CI 실패 이슈 승격
 : 단발 실패(1회)는 경고 수준, 연속 실패(2회 이상)는 자동 승격 라벨과 함께 high severity로 처리
 
