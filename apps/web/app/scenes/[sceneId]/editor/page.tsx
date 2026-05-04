@@ -390,6 +390,11 @@ export default function SceneEditorPage() {
       setCatalogQuery(query);
     }
 
+    const latestOnly = params.get('catalogLatest');
+    if (latestOnly === 'false' || latestOnly === '0') {
+      setCatalogLatestByFamilyOnly(false);
+    }
+
     const detailMode = params.get('lifecycleDetailMode');
     if (detailMode === 'short' || detailMode === 'long') {
       setLifecycleDetailTruncateMode(detailMode);
@@ -452,6 +457,12 @@ export default function SceneEditorPage() {
       params.set('lifecycleDetailMode', lifecycleDetailTruncateMode);
     }
 
+    if (catalogLatestByFamilyOnly) {
+      params.delete('catalogLatest');
+    } else {
+      params.set('catalogLatest', 'false');
+    }
+
     const nextQuery = params.toString();
     const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ''}${window.location.hash}`;
     window.history.replaceState(null, '', nextUrl);
@@ -461,8 +472,56 @@ export default function SceneEditorPage() {
     catalogIncludeInactive,
     catalogCategory,
     catalogQuery,
-    lifecycleDetailTruncateMode
+    lifecycleDetailTruncateMode,
+    catalogLatestByFamilyOnly
   ]);
+
+  function buildLifecycleExpandedStorageKey(definitionId: string) {
+    return `scene-editor:lifecycle-expanded:${sceneId}:${definitionId}`;
+  }
+
+  function readLifecycleExpandedState(definitionId: string) {
+    try {
+      const raw = window.sessionStorage.getItem(buildLifecycleExpandedStorageKey(definitionId));
+      if (!raw) {
+        return {} as Record<string, boolean>;
+      }
+
+      const parsed = JSON.parse(raw) as unknown;
+      if (!Array.isArray(parsed)) {
+        return {} as Record<string, boolean>;
+      }
+
+      const next: Record<string, boolean> = {};
+      for (const item of parsed) {
+        if (typeof item === 'string' && item.trim().length > 0) {
+          next[item] = true;
+        }
+      }
+      return next;
+    } catch {
+      return {} as Record<string, boolean>;
+    }
+  }
+
+  useEffect(() => {
+    if (!lifecycleEventsTargetId) {
+      return;
+    }
+
+    const expandedIds = Object.entries(lifecycleExpandedEventIds)
+      .filter(([, expanded]) => expanded)
+      .map(([eventId]) => eventId);
+
+    try {
+      window.sessionStorage.setItem(
+        buildLifecycleExpandedStorageKey(lifecycleEventsTargetId),
+        JSON.stringify(expandedIds)
+      );
+    } catch {
+      // ignore sessionStorage write errors
+    }
+  }, [lifecycleExpandedEventIds, lifecycleEventsTargetId, sceneId]);
 
   async function readErrorMessage(response: Response) {
     const payload = await readErrorPayload(response);
@@ -725,6 +784,14 @@ export default function SceneEditorPage() {
 
     const data = (await response.json()) as ObjectDefinitionLifecycleEvent[];
     setLifecycleEvents(data);
+    const restoredExpanded = readLifecycleExpandedState(definitionId);
+    const normalizedExpanded: Record<string, boolean> = {};
+    for (const event of data) {
+      if (restoredExpanded[event.id]) {
+        normalizedExpanded[event.id] = true;
+      }
+    }
+    setLifecycleExpandedEventIds(normalizedExpanded);
     setLifecycleEventsLoading(false);
   }
 
