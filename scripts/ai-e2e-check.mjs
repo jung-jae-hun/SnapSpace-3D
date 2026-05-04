@@ -1,4 +1,8 @@
-const API = 'http://localhost:8081/api/v1';
+const API = (process.env.SNAPSPACE_API_BASE_URL ?? 'http://localhost:8081/api/v1').replace(
+  /\/$/,
+  ''
+);
+const MINIO_PUBLIC_HOST = process.env.SNAPSPACE_MINIO_PUBLIC_HOST ?? 'localhost:9000';
 
 async function req(path, init = {}) {
   const res = await fetch(`${API}${path}`, init);
@@ -16,6 +20,14 @@ function assert(cond, msg) {
   if (!cond) {
     throw new Error(msg);
   }
+}
+
+function resolveUploadUrl(rawUrl) {
+  const parsed = new URL(rawUrl);
+  if (parsed.hostname === 'minio') {
+    parsed.host = MINIO_PUBLIC_HOST;
+  }
+  return parsed.toString();
 }
 
 async function main() {
@@ -63,21 +75,27 @@ async function main() {
     sceneId = createdScene.json.id;
   }
 
+  const sourceImageBytes = Buffer.from('JPEG-E2E');
   const objectKey = `images/ai-source/${sceneId}/${Date.now()}-e2e.jpeg`;
   const uploadTicket = await req('/assets/upload-url', {
     method: 'POST',
     headers: { ...auth, 'content-type': 'application/json' },
-    body: JSON.stringify({ objectKey, contentType: 'image/jpeg' })
+    body: JSON.stringify({
+      objectKey,
+      contentType: 'image/jpeg',
+      contentLength: sourceImageBytes.length
+    })
   });
   assert(
     uploadTicket.res.ok,
     `upload-url failed: ${uploadTicket.res.status} ${JSON.stringify(uploadTicket.json)}`
   );
 
-  const putRes = await fetch(uploadTicket.json.uploadUrl, {
+  const resolvedUploadUrl = resolveUploadUrl(uploadTicket.json.uploadUrl);
+  const putRes = await fetch(resolvedUploadUrl, {
     method: 'PUT',
     headers: { 'content-type': 'image/jpeg' },
-    body: Buffer.from('JPEG-E2E')
+    body: sourceImageBytes
   });
   assert(putRes.ok, `put failed: ${putRes.status}`);
 
@@ -116,6 +134,19 @@ async function main() {
     `promote failed: ${promoted.res.status} ${JSON.stringify(promoted.json)}`
   );
 
+  const promotedViaAlias = await req(`/object-definitions/from-generation/${generationId}`, {
+    method: 'POST',
+    headers: auth
+  });
+  assert(
+    promotedViaAlias.res.ok,
+    `promote(alias) failed: ${promotedViaAlias.res.status} ${JSON.stringify(promotedViaAlias.json)}`
+  );
+  assert(
+    promotedViaAlias.json?.id === promoted.json?.id,
+    `promote(alias) mismatch: ${promotedViaAlias.json?.id} != ${promoted.json?.id}`
+  );
+
   console.log(
     JSON.stringify(
       {
@@ -127,7 +158,8 @@ async function main() {
         progress: last.progress,
         glbAssetId: last.generatedAsset?.glbAssetId,
         promotedObjectId: promoted.json?.id,
-        promotedObjectName: promoted.json?.name
+        promotedObjectName: promoted.json?.name,
+        promotedAliasObjectId: promotedViaAlias.json?.id
       },
       null,
       2

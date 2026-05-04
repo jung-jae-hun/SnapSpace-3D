@@ -2,6 +2,7 @@
 set -euo pipefail
 
 WEB_BASE="${SNAPSPACE_WEB_BASE_URL:-http://localhost:3300}"
+API_BASE="${SNAPSPACE_API_BASE_URL:-http://localhost:8080/api/v1}"
 EMAIL="${SNAPSPACE_E2E_EMAIL:-ai-e2e-$(date +%s)@snapspace.local}"
 NAME="${SNAPSPACE_E2E_NAME:-AI E2E Runner}"
 POLL_MAX="${SNAPSPACE_E2E_POLL_MAX:-30}"
@@ -34,6 +35,21 @@ request_json() {
   fi
 }
 
+request_json_api() {
+  local method="$1"
+  local url="$2"
+  local body="${3:-}"
+  if [[ -n "$body" ]]; then
+    curl -sS --max-time "$CURL_MAX_TIME" \
+      -H "Authorization: Bearer $ACCESS_TOKEN" \
+      -H 'Content-Type: application/json' -X "$method" "$url" --data "$body" > "$RESP_FILE"
+  else
+    curl -sS --max-time "$CURL_MAX_TIME" \
+      -H "Authorization: Bearer $ACCESS_TOKEN" \
+      -X "$method" "$url" > "$RESP_FILE"
+  fi
+}
+
 json_get() {
   local key_path="$1"
   node -e '
@@ -54,6 +70,17 @@ process.stdout.write(String(cur));
 
 echo "[ai-e2e] login via web proxy"
 request_json "POST" "$WEB_BASE/api/auth/login" "{\"email\":\"$EMAIL\",\"name\":\"$NAME\"}"
+
+echo "[ai-e2e] request bearer token via api login"
+curl -sS --max-time "$CURL_MAX_TIME" -H 'Content-Type: application/json' \
+  -X POST "$API_BASE/auth/login" --data "{\"email\":\"$EMAIL\",\"name\":\"$NAME\"}" > "$RESP_FILE"
+
+ACCESS_TOKEN="$(json_get accessToken || true)"
+if [[ -z "$ACCESS_TOKEN" ]]; then
+  echo "[ai-e2e] FAIL: access token missing"
+  cat "$RESP_FILE"
+  exit 1
+fi
 
 if ! grep -q 'snapspace_access_token' "$COOKIE_JAR"; then
   echo "[ai-e2e] FAIL: login cookie missing"
@@ -82,7 +109,8 @@ fi
 OBJECT_KEY="images/ai-source/$SCENE_ID/e2e-$(date +%s)-source.png"
 
 echo "[ai-e2e] request upload url"
-request_json "POST" "$WEB_BASE/api/assets/upload-url" "{\"objectKey\":\"$OBJECT_KEY\",\"contentType\":\"image/png\"}"
+CONTENT_LENGTH="$(wc -c < "$PNG_FILE" | tr -d ' ')"
+request_json "POST" "$WEB_BASE/api/assets/upload-url" "{\"objectKey\":\"$OBJECT_KEY\",\"contentType\":\"image/png\",\"contentLength\":$CONTENT_LENGTH}"
 UPLOAD_URL="$(json_get uploadUrl || true)"
 if [[ -z "$UPLOAD_URL" ]]; then
   echo "[ai-e2e] FAIL: upload url missing"
@@ -136,11 +164,25 @@ if [[ "$STATUS" != "ready" ]]; then
 fi
 
 echo "[ai-e2e] promote generation to catalog"
-request_json "POST" "$WEB_BASE/api/ai/generations/$GEN_ID/promote"
+request_json_api "POST" "$API_BASE/ai/generations/$GEN_ID/promote"
 OBJECT_DEF_ID="$(json_get id || true)"
 if [[ -z "$OBJECT_DEF_ID" ]]; then
   echo "[ai-e2e] FAIL: promote failed"
   cat "$RESP_FILE"
+  exit 1
+fi
+
+echo "[ai-e2e] verify alias promote endpoint"
+request_json_api "POST" "$API_BASE/object-definitions/from-generation/$GEN_ID"
+OBJECT_DEF_ALIAS_ID="$(json_get id || true)"
+if [[ -z "$OBJECT_DEF_ALIAS_ID" ]]; then
+  echo "[ai-e2e] FAIL: alias promote failed"
+  cat "$RESP_FILE"
+  exit 1
+fi
+
+if [[ "$OBJECT_DEF_ALIAS_ID" != "$OBJECT_DEF_ID" ]]; then
+  echo "[ai-e2e] FAIL: alias promote id mismatch ($OBJECT_DEF_ALIAS_ID != $OBJECT_DEF_ID)"
   exit 1
 fi
 
@@ -149,3 +191,4 @@ echo "- project_id: $PROJECT_ID"
 echo "- scene_id: $SCENE_ID"
 echo "- generation_id: $GEN_ID"
 echo "- object_definition_id: $OBJECT_DEF_ID"
+echo "- object_definition_alias_id: $OBJECT_DEF_ALIAS_ID"

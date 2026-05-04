@@ -26,6 +26,7 @@ export async function POST(request: NextRequest) {
   const body = (await request.json().catch(() => ({}))) as {
     objectKey?: string;
     contentType?: string;
+    contentLength?: number;
   };
 
   const response = await fetch(backendUrl('/assets/upload-url'), {
@@ -36,7 +37,8 @@ export async function POST(request: NextRequest) {
     },
     body: JSON.stringify({
       objectKey: body.objectKey,
-      contentType: body.contentType ?? 'application/octet-stream'
+      contentType: body.contentType ?? 'application/octet-stream',
+      contentLength: body.contentLength
     })
   });
 
