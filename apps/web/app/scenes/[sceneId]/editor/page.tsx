@@ -356,6 +356,27 @@ export default function SceneEditorPage() {
     };
   }, []);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const filter = params.get('lifecycleAction');
+    if (filter === 'activate' || filter === 'deactivate' || filter === 'new_version') {
+      setLifecycleActionFilter(filter);
+    }
+  }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (lifecycleActionFilter === 'all') {
+      params.delete('lifecycleAction');
+    } else {
+      params.set('lifecycleAction', lifecycleActionFilter);
+    }
+
+    const nextQuery = params.toString();
+    const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ''}${window.location.hash}`;
+    window.history.replaceState(null, '', nextUrl);
+  }, [lifecycleActionFilter]);
+
   async function readErrorMessage(response: Response) {
     const payload = await readErrorPayload(response);
     return payload.message;
@@ -874,6 +895,61 @@ export default function SceneEditorPage() {
       pushAiEvent('클립보드 복사 실패', 'error', 'system');
       setStatus('클립보드 복사에 실패했습니다. 브라우저 권한을 확인해 주세요.');
     }
+  }
+
+  function escapeCsvField(value: string) {
+    if (/[",\n]/.test(value)) {
+      return `"${value.replace(/"/g, '""')}"`;
+    }
+    return value;
+  }
+
+  function exportLifecycleEventsCsv() {
+    const rows = filteredLifecycleEvents.map((event) => {
+      const unresolvedRefCount = getLifecycleDetailEntries(event.details).filter(
+        (entry) => entry.unresolvedRef
+      ).length;
+      const actorDisplay = formatLifecycleActor(event.actorUserId);
+      const detailsJson = JSON.stringify(event.details ?? {});
+
+      return [
+        event.id,
+        event.objectDefinitionId,
+        event.createdAt,
+        formatLifecycleAction(event.action),
+        actorDisplay,
+        event.actorUserId,
+        String(unresolvedRefCount),
+        detailsJson
+      ].map((field) => escapeCsvField(field));
+    });
+
+    const header = [
+      'eventId',
+      'objectDefinitionId',
+      'createdAt',
+      'action',
+      'actorDisplay',
+      'actorRawId',
+      'unresolvedRefCount',
+      'detailsJson'
+    ];
+
+    const csv = [header.join(','), ...rows.map((row) => row.join(','))].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+
+    const date = new Date().toISOString().replace(/[:.]/g, '-');
+    const fileName = `lifecycle-events-${sceneId}-${date}.csv`;
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    setStatus(`라이프사이클 CSV를 내보냈습니다: ${fileName}`);
   }
 
   async function loadInitial() {
@@ -3000,6 +3076,14 @@ export default function SceneEditorPage() {
                           >
                             요약 복사
                           </button>
+                          <button
+                            className="btn btn-outline-secondary btn-sm"
+                            type="button"
+                            onClick={exportLifecycleEventsCsv}
+                            disabled={filteredLifecycleEvents.length === 0}
+                          >
+                            CSV 내보내기
+                          </button>
                         </div>
                       </div>
                       {lifecycleUnresolvedSummary.unresolvedCount > 0 ? (
@@ -3125,7 +3209,7 @@ export default function SceneEditorPage() {
                               </div>
 
                               <p className="subtle" style={{ margin: 0 }}>
-                                actor: {formatLifecycleActor(event.actorUserId)}
+                                actor: <span title={`원본 ID: ${event.actorUserId}`}>{formatLifecycleActor(event.actorUserId)}</span>
                               </p>
 
                               {unresolvedRefCount > 0 ? (
