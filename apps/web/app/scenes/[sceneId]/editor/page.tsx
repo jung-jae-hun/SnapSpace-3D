@@ -101,6 +101,7 @@ type AiErrorPolicy = {
   retryable: boolean;
   level: AiLogLevel;
 };
+type LifecycleActionFilter = 'all' | 'activate' | 'deactivate' | 'new_version';
 
 const AI_SOURCE_MAX_BYTES = 10 * 1024 * 1024;
 const AI_SOURCE_ALLOWED_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
@@ -169,13 +170,12 @@ export default function SceneEditorPage() {
   const [lifecycleEventsTargetName, setLifecycleEventsTargetName] = useState<string | null>(null);
   const [lifecycleEventsLoading, setLifecycleEventsLoading] = useState(false);
   const [lifecycleEvents, setLifecycleEvents] = useState<ObjectDefinitionLifecycleEvent[]>([]);
-  const [lifecycleActionFilter, setLifecycleActionFilter] = useState<
-    'all' | 'activate' | 'deactivate' | 'new_version'
-  >('all');
+  const [lifecycleActionFilter, setLifecycleActionFilter] = useState<LifecycleActionFilter>('all');
   const [lifecycleExpandedEventIds, setLifecycleExpandedEventIds] = useState<
     Record<string, boolean>
   >({});
   const [catalogHighlightedId, setCatalogHighlightedId] = useState<string | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [density, setDensity] = useState<'cozy' | 'compact'>('cozy');
   const [activeSection, setActiveSection] = useState<ActiveSection>('layout-2d');
   const [snapToGrid, setSnapToGrid] = useState(true);
@@ -633,6 +633,20 @@ export default function SceneEditorPage() {
     return action;
   }
 
+  function toKnownLifecycleAction(action: string): Exclude<LifecycleActionFilter, 'all'> | null {
+    if (action === 'activate' || action === 'deactivate' || action === 'new_version') {
+      return action;
+    }
+    return null;
+  }
+
+  function formatLifecycleActor(actorUserId: string) {
+    if (currentUserId && actorUserId === currentUserId) {
+      return '나';
+    }
+    return actorUserId;
+  }
+
   function formatRelativeTime(timestamp: string) {
     const target = new Date(timestamp).getTime();
     if (!Number.isFinite(target)) {
@@ -872,6 +886,27 @@ export default function SceneEditorPage() {
         setStatus('로그인이 필요합니다. 로그인 페이지로 이동합니다.');
         router.replace('/');
         return;
+      }
+
+      if (authRes.ok) {
+        try {
+          const authData = (await authRes.json()) as {
+            id?: string;
+            sub?: string;
+            userId?: string;
+            user?: { id?: string; sub?: string };
+          };
+          const resolvedUserId =
+            authData.id ??
+            authData.sub ??
+            authData.userId ??
+            authData.user?.id ??
+            authData.user?.sub ??
+            null;
+          setCurrentUserId(resolvedUserId);
+        } catch {
+          setCurrentUserId(null);
+        }
       }
 
       const [sceneRes, catalogRes, placementsRes, generatedRes, exportsRes] = await Promise.all([
@@ -2985,20 +3020,40 @@ export default function SceneEditorPage() {
                       {lifecycleActionStats.length > 0 ? (
                         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                           {lifecycleActionStats.map((item) => (
-                            <span
+                            <button
                               key={item.action}
                               className="subtle"
+                              type="button"
+                              onClick={() => {
+                                const knownAction = toKnownLifecycleAction(item.action);
+                                if (!knownAction) {
+                                  return;
+                                }
+                                setLifecycleActionFilter((prev) =>
+                                  prev === knownAction ? 'all' : knownAction
+                                );
+                              }}
+                              title={
+                                toKnownLifecycleAction(item.action)
+                                  ? '클릭하여 액션 필터 적용/해제'
+                                  : '이 액션은 필터 버튼을 지원하지 않습니다'
+                              }
+                              disabled={!toKnownLifecycleAction(item.action)}
                               style={{
                                 margin: 0,
                                 fontSize: 12,
                                 border: '1px solid #d8e1e8',
                                 borderRadius: 999,
                                 padding: '2px 8px',
-                                background: '#f8fafc'
+                                background:
+                                  lifecycleActionFilter === item.action
+                                    ? 'rgba(31, 79, 143, 0.16)'
+                                    : '#f8fafc',
+                                cursor: toKnownLifecycleAction(item.action) ? 'pointer' : 'default'
                               }}
                             >
                               {item.label} {item.count}
-                            </span>
+                            </button>
                           ))}
                         </div>
                       ) : null}
@@ -3070,7 +3125,7 @@ export default function SceneEditorPage() {
                               </div>
 
                               <p className="subtle" style={{ margin: 0 }}>
-                                actor: {event.actorUserId}
+                                actor: {formatLifecycleActor(event.actorUserId)}
                               </p>
 
                               {unresolvedRefCount > 0 ? (
