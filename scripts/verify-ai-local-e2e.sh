@@ -164,7 +164,7 @@ if [[ "$STATUS" != "ready" ]]; then
 fi
 
 echo "[ai-e2e] promote generation to catalog"
-request_json_api "POST" "$API_BASE/ai/generations/$GEN_ID/promote"
+request_json "POST" "$WEB_BASE/api/ai/generations/$GEN_ID/promote"
 OBJECT_DEF_ID="$(json_get id || true)"
 if [[ -z "$OBJECT_DEF_ID" ]]; then
   echo "[ai-e2e] FAIL: promote failed"

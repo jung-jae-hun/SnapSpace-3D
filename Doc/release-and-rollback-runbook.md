@@ -130,6 +130,7 @@ git bundle create ../SnapSpace-3D-rollback-$(date +%Y%m%d-%H%M%S).bundle --all
 - `runAiLocalE2E=true` (AI 생성/alias promote 회귀까지 함께 점검할 때)
 
 4. 현재 알려진 주의사항
-- 일부 런타임 조합에서 web proxy 경로 `/api/ai/generations/:id/promote`가 404 HTML로 응답할 수 있다.
-- 회귀 검증은 `scripts/verify-ai-local-e2e.sh` 기준으로 수행하며, promote/alias 검증은 API 직통(Bearer) 호출 경로를 사용한다.
+- Next app/api에서 동적 세그먼트 하위 액션 라우트가 누락될 수 있으므로 AI generation 상세/액션은 단일 catch-all 경로(`app/api/ai/generations/[generationId]/[[...action]]/route.ts`)로 유지한다.
+- Turbopack 캐시/컴파일 상태가 stale 하면 web proxy가 500으로 흔들릴 수 있다. 이 경우 `docker restart snapspace-web-dev` 후 `pnpm dev:docker:verify`를 재실행해 정상 상태를 확정한다.
+- AI 회귀 검증은 `scripts/verify-ai-local-e2e.sh` 기준으로 수행하며, promote는 web proxy 경로(`/api/ai/generations/:id/promote`)를 기본 검증 경로로 사용한다.
 
