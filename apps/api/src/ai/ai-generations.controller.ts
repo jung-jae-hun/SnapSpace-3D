@@ -33,6 +33,12 @@ export class AiGenerationsController {
     return this.aiGenerationsService.findOne(req.user.sub, generationId);
   }
 
+  @Post(':generationId/cancel')
+  @ApiOperation({ summary: 'AI 3D 생성 작업 취소' })
+  cancel(@Req() req: AuthenticatedRequest, @Param('generationId') generationId: string) {
+    return this.aiGenerationsService.cancel(req.user.sub, generationId);
+  }
+
   @Post(':generationId/promote')
   @ApiOperation({ summary: '생성 결과를 object definition으로 등록' })
   promote(@Req() req: AuthenticatedRequest, @Param('generationId') generationId: string) {

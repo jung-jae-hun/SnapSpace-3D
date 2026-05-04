@@ -33,6 +33,9 @@ services:
       MINIO_PUBLIC_ENDPOINT: minio
       MINIO_PUBLIC_PORT: 9000
       MINIO_PUBLIC_USE_SSL: "false"
+      AI_PROVIDER_MODE: ${AI_PROVIDER_MODE:-mock}
+      AI_PROVIDER_LOCAL_FALLBACK_TO_MOCK: ${AI_PROVIDER_LOCAL_FALLBACK_TO_MOCK:-true}
+      AI_PROVIDER_BASE_URL: ${AI_PROVIDER_BASE_URL:-}
     ports:
       - "${API_PORT:-8080}:8080"
     volumes:
@@ -48,6 +51,8 @@ services:
         condition: service_started
       minio:
         condition: service_started
+      ai-provider-local:
+        condition: service_started
     command: ["sh", "-c", "npm i -g pnpm && pnpm install && pnpm --filter @snapspace/api prisma:generate && pnpm --filter @snapspace/api exec ts-node src/main.ts"]
 
   worker:
@@ -58,6 +63,10 @@ services:
     container_name: snapspace-worker-dev
     env_file:
       - ../../.env.example
+    environment:
+      AI_PROVIDER_MODE: ${AI_PROVIDER_MODE:-mock}
+      AI_PROVIDER_LOCAL_FALLBACK_TO_MOCK: ${AI_PROVIDER_LOCAL_FALLBACK_TO_MOCK:-true}
+      AI_PROVIDER_BASE_URL: ${AI_PROVIDER_BASE_URL:-}
     volumes:
       - ../../apps/worker:/app/apps/worker
       - ../../packages:/app/packages
@@ -110,6 +119,41 @@ services:
       - "${MINIO_CONSOLE_PORT:-9001}:9001"
     volumes:
       - minio_data:/data
+
+  ai-provider-local:
+    image: node:20-alpine
+    container_name: snapspace-ai-provider-local-dev
+    environment:
+      LOCAL_PROVIDER_STUB_HOST: 0.0.0.0
+      LOCAL_PROVIDER_STUB_PORT: 7001
+      LOCAL_PROVIDER_STUB_READY_MS: ${LOCAL_PROVIDER_STUB_READY_MS:-5000}
+    ports:
+      - "${LOCAL_PROVIDER_PORT:-7001}:7001"
+    volumes:
+      - ../../scripts:/workspace/scripts:ro
+    working_dir: /workspace
+    command: ["node", "scripts/local-provider-stub.mjs"]
+
+  ai-provider-opensrc:
+    image: python:3.11-slim
+    container_name: snapspace-ai-provider-opensrc-dev
+    profiles: ["opensrc"]
+    environment:
+      OPENSRC_PROVIDER_HOST: 0.0.0.0
+      OPENSRC_PROVIDER_PORT: 7002
+      OPENSRC_PROVIDER_READY_MS: ${OPENSRC_PROVIDER_READY_MS:-8000}
+      OPENSRC_ENGINE_MODE: ${OPENSRC_ENGINE_MODE:-stub}
+      OPENSRC_ENGINE_BASE_URL: ${OPENSRC_ENGINE_BASE_URL:-}
+      OPENSRC_ENGINE_SUBMIT_PATH: ${OPENSRC_ENGINE_SUBMIT_PATH:-/v1/image-to-3d/jobs}
+      OPENSRC_ENGINE_STATUS_PATH: ${OPENSRC_ENGINE_STATUS_PATH:-/v1/image-to-3d/jobs/{jobId}}
+      OPENSRC_ENGINE_API_KEY: ${OPENSRC_ENGINE_API_KEY:-}
+      OPENSRC_ENGINE_TIMEOUT_SEC: ${OPENSRC_ENGINE_TIMEOUT_SEC:-20}
+    ports:
+      - "${OPENSRC_PROVIDER_PORT:-7002}:7002"
+    volumes:
+      - ../../scripts:/workspace/scripts:ro
+    working_dir: /workspace
+    command: ["python", "scripts/local-provider-opensrc.py"]
 
 volumes:
   pg_data:

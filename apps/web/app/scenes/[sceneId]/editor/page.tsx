@@ -21,6 +21,17 @@ type ObjectDefinition = {
   code: string;
   name: string;
   category: string;
+  source?: 'manual' | 'ai';
+  tags?: string[];
+};
+
+type ObjectDefinitionLifecycleEvent = {
+  id: string;
+  objectDefinitionId: string;
+  action: 'activate' | 'deactivate' | 'new_version' | string;
+  actorUserId: string;
+  createdAt: string;
+  details?: Record<string, unknown> | null;
 };
 
 type PlacedObject = {
@@ -66,6 +77,7 @@ type AiGenerationJob = {
   id: string;
   status: AiGenerationStatus;
   progress: number;
+  errorCode?: string | null;
   errorMessage?: string | null;
   sourceImageAssetId: string;
   generatedAsset?: AiGeneratedAssetSummary | null;
@@ -84,6 +96,54 @@ type AiLogEntry = {
 };
 
 type AiPollStopReason = 'completed' | 'failed' | 'timeout' | 'failure-limit' | null;
+type AiErrorPolicy = {
+  message: string;
+  retryable: boolean;
+  level: AiLogLevel;
+};
+
+const AI_SOURCE_MAX_BYTES = 10 * 1024 * 1024;
+const AI_SOURCE_ALLOWED_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
+const LIFECYCLE_INACTIVE_TAG = 'lifecycle:inactive';
+const LIFECYCLE_VERSION_PREFIX = 'lifecycle:version:';
+const LIFECYCLE_FAMILY_PREFIX = 'lifecycle:family:';
+const AI_ERROR_POLICIES: Record<string, AiErrorPolicy> = {
+  cancelled_by_user: {
+    message: '생성 작업이 사용자에 의해 취소되었습니다.',
+    retryable: true,
+    level: 'warn'
+  },
+  provider_start_failed: {
+    message: '생성 작업 시작에 실패했습니다.',
+    retryable: true,
+    level: 'error'
+  },
+  provider_poll_failed: {
+    message: '생성 상태 조회 중 공급자 통신에 실패했습니다.',
+    retryable: true,
+    level: 'error'
+  },
+  provider_failed: {
+    message: '공급자에서 생성 작업이 실패했습니다.',
+    retryable: true,
+    level: 'error'
+  },
+  post_processing_failed: {
+    message: '생성 결과 후처리에 실패했습니다.',
+    retryable: true,
+    level: 'error'
+  },
+  quality_gate_failed: {
+    message: '생성 결과 품질 검증을 통과하지 못했습니다.',
+    retryable: true,
+    level: 'warn'
+  },
+  timeout: {
+    message: '생성 작업 시간이 초과되었습니다.',
+    retryable: true,
+    level: 'warn'
+  }
+};
 
 export default function SceneEditorPage() {
   const params = useParams<{ sceneId: string }>();
@@ -101,6 +161,14 @@ export default function SceneEditorPage() {
   const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [catalogQuery, setCatalogQuery] = useState('');
   const [catalogCategory, setCatalogCategory] = useState<'all' | string>('all');
+  const [catalogSourceFilter, setCatalogSourceFilter] = useState<'all' | 'manual' | 'ai'>('all');
+  const [catalogIncludeInactive, setCatalogIncludeInactive] = useState(false);
+  const [catalogLatestByFamilyOnly, setCatalogLatestByFamilyOnly] = useState(true);
+  const [catalogLifecycleBusyId, setCatalogLifecycleBusyId] = useState<string | null>(null);
+  const [lifecycleEventsTargetId, setLifecycleEventsTargetId] = useState<string | null>(null);
+  const [lifecycleEventsTargetName, setLifecycleEventsTargetName] = useState<string | null>(null);
+  const [lifecycleEventsLoading, setLifecycleEventsLoading] = useState(false);
+  const [lifecycleEvents, setLifecycleEvents] = useState<ObjectDefinitionLifecycleEvent[]>([]);
   const [density, setDensity] = useState<'cozy' | 'compact'>('cozy');
   const [activeSection, setActiveSection] = useState<ActiveSection>('layout-2d');
   const [snapToGrid, setSnapToGrid] = useState(true);
@@ -118,6 +186,7 @@ export default function SceneEditorPage() {
   const [aiCreating, setAiCreating] = useState(false);
   const [aiRefreshing, setAiRefreshing] = useState(false);
   const [aiPromoting, setAiPromoting] = useState(false);
+  const [aiCancelling, setAiCancelling] = useState(false);
   const [activeGenerationId, setActiveGenerationId] = useState<string | null>(null);
   const [activeGeneration, setActiveGeneration] = useState<AiGenerationJob | null>(null);
   const [recentAiObjectId, setRecentAiObjectId] = useState<string | null>(null);
@@ -245,12 +314,279 @@ export default function SceneEditorPage() {
   }, []);
 
   async function readErrorMessage(response: Response) {
+    const payload = await readErrorPayload(response);
+    return payload.message;
+  }
+
+  async function readErrorPayload(response: Response) {
     try {
-      const data = (await response.json()) as { message?: string };
-      return data?.message;
+      const data = (await response.json()) as {
+        message?: string;
+        errorCode?: string;
+      };
+      return {
+        message: data?.message,
+        errorCode: data?.errorCode
+      };
     } catch {
-      return undefined;
+      return {
+        message: undefined,
+        errorCode: undefined
+      };
     }
+  }
+
+  function resolveAiErrorPolicy(errorCode?: string | null, message?: string | null) {
+    const policy = (errorCode && AI_ERROR_POLICIES[errorCode]) || {
+      message: 'AI 생성 작업 처리 중 오류가 발생했습니다.',
+      retryable: true,
+      level: 'error' as AiLogLevel
+    };
+
+    return {
+      ...policy,
+      message: message?.trim() ? message : policy.message
+    };
+  }
+
+  function hasTag(def: ObjectDefinition, tag: string) {
+    return def.tags?.includes(tag) ?? false;
+  }
+
+  function isDefinitionInactive(def: ObjectDefinition) {
+    return hasTag(def, LIFECYCLE_INACTIVE_TAG);
+  }
+
+  function getDefinitionVersion(def: ObjectDefinition) {
+    const versionTag = def.tags?.find((tag) => tag.startsWith(LIFECYCLE_VERSION_PREFIX));
+    if (!versionTag) {
+      return null;
+    }
+
+    const version = Number(versionTag.slice(LIFECYCLE_VERSION_PREFIX.length));
+    return Number.isFinite(version) && version > 0 ? Math.floor(version) : null;
+  }
+
+  function getDefinitionFamily(def: ObjectDefinition) {
+    const familyTag = def.tags?.find((tag) => tag.startsWith(LIFECYCLE_FAMILY_PREFIX));
+    if (!familyTag) {
+      return def.code;
+    }
+
+    const family = familyTag.slice(LIFECYCLE_FAMILY_PREFIX.length).trim();
+    return family || def.code;
+  }
+
+  function buildCatalogApiPath(includeInactive: boolean, source: 'all' | 'manual' | 'ai') {
+    const params = new URLSearchParams();
+    if (includeInactive) {
+      params.set('includeInactive', 'true');
+    }
+    if (source !== 'all') {
+      params.set('source', source);
+    }
+
+    const query = params.toString();
+    return query ? `/api/object-definitions?${query}` : '/api/object-definitions';
+  }
+
+  async function fetchCatalogOnly(options?: {
+    includeInactive?: boolean;
+    source?: 'all' | 'manual' | 'ai';
+    silent?: boolean;
+  }) {
+    const includeInactive = options?.includeInactive ?? catalogIncludeInactive;
+    const source = options?.source ?? catalogSourceFilter;
+
+    let response: Response;
+    try {
+      response = await fetch(buildCatalogApiPath(includeInactive, source), { cache: 'no-store' });
+    } catch {
+      if (!options?.silent) {
+        setStatus('네트워크 오류로 카탈로그를 불러오지 못했습니다.');
+      }
+      return null;
+    }
+
+    if (response.status === 401) {
+      setSceneAvailable(false);
+      setStatus('세션이 만료되었습니다. 다시 로그인해 주세요.');
+      router.replace('/');
+      return null;
+    }
+
+    if (!response.ok) {
+      if (!options?.silent) {
+        const message = await readErrorMessage(response);
+        setStatus(message ?? '카탈로그를 불러오지 못했습니다.');
+      }
+      return null;
+    }
+
+    const catalogData = (await response.json()) as ObjectDefinition[];
+    setCatalog(catalogData);
+    return catalogData;
+  }
+
+  async function runCatalogLifecycleAction(
+    def: ObjectDefinition,
+    action: 'activate' | 'deactivate' | 'new-version'
+  ) {
+    if (catalogLifecycleBusyId) {
+      return;
+    }
+
+    setCatalogLifecycleBusyId(def.id);
+    const actionLabel: Record<'activate' | 'deactivate' | 'new-version', string> = {
+      activate: '활성화',
+      deactivate: '비활성화',
+      'new-version': '신규 버전 생성'
+    };
+    setStatus(`카탈로그 ${actionLabel[action]} 처리 중...`);
+
+    try {
+      const response = await fetch(`/api/object-definitions/${def.id}/${action}`, {
+        method: 'POST'
+      });
+
+      if (response.status === 401) {
+        setSceneAvailable(false);
+        setStatus('세션이 만료되었습니다. 다시 로그인해 주세요.');
+        router.replace('/');
+        return;
+      }
+
+      if (!response.ok) {
+        const message = await readErrorMessage(response);
+        setStatus(message ?? `카탈로그 ${actionLabel[action]}에 실패했습니다.`);
+        return;
+      }
+
+      if (action === 'new-version') {
+        const payload = (await response.json()) as {
+          created?: ObjectDefinition;
+        };
+        if (payload.created?.id) {
+          setRecentAiObjectId(payload.created.id);
+
+          const rollforwardResult = await rollforwardPlacementsToNewVersion(
+            def.id,
+            payload.created.id
+          );
+
+          await fetchCatalogOnly({ silent: true });
+
+          if (!rollforwardResult) {
+            setStatus('신규 버전 생성은 완료되었지만 씬 배치 교체는 실패했습니다.');
+            return;
+          }
+
+          await loadLifecycleEvents(def.id, def.name);
+          await loadInitial();
+          setStatus(
+            `신규 버전 생성 및 롤포워드 완료 (교체 ${rollforwardResult.replacedCount}건)`
+          );
+          return;
+        }
+      }
+
+      await fetchCatalogOnly({ silent: true });
+      await loadLifecycleEvents(def.id, def.name);
+      setStatus(`카탈로그 ${actionLabel[action]} 완료`);
+    } catch {
+      setStatus(`네트워크 오류로 카탈로그 ${actionLabel[action]}에 실패했습니다.`);
+    } finally {
+      setCatalogLifecycleBusyId(null);
+    }
+  }
+
+  async function rollforwardPlacementsToNewVersion(
+    fromObjectDefinitionId: string,
+    toObjectDefinitionId: string
+  ) {
+    let response: Response;
+    try {
+      response = await fetch(`/api/scenes/${sceneId}/placed-objects/rollforward`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fromObjectDefinitionId,
+          toObjectDefinitionId
+        })
+      });
+    } catch {
+      setStatus('네트워크 오류로 씬 배치 롤포워드에 실패했습니다.');
+      return null;
+    }
+
+    if (response.status === 401) {
+      setSceneAvailable(false);
+      setStatus('세션이 만료되었습니다. 다시 로그인해 주세요.');
+      router.replace('/');
+      return null;
+    }
+
+    if (!response.ok) {
+      const message = await readErrorMessage(response);
+      setStatus(message ?? '씬 배치 롤포워드에 실패했습니다.');
+      return null;
+    }
+
+    return (await response.json()) as {
+      replacedCount: number;
+      fromObjectDefinitionId: string;
+      toObjectDefinitionId: string;
+    };
+  }
+
+  async function loadLifecycleEvents(definitionId: string, definitionName: string) {
+    setLifecycleEventsTargetId(definitionId);
+    setLifecycleEventsTargetName(definitionName);
+    setLifecycleEventsLoading(true);
+
+    let response: Response;
+    try {
+      response = await fetch(
+        `/api/object-definitions/${definitionId}/lifecycle-events?limit=12`,
+        { cache: 'no-store' }
+      );
+    } catch {
+      setLifecycleEventsLoading(false);
+      setStatus('네트워크 오류로 라이프사이클 이력을 불러오지 못했습니다.');
+      return;
+    }
+
+    if (response.status === 401) {
+      setLifecycleEventsLoading(false);
+      setSceneAvailable(false);
+      setStatus('세션이 만료되었습니다. 다시 로그인해 주세요.');
+      router.replace('/');
+      return;
+    }
+
+    if (!response.ok) {
+      setLifecycleEventsLoading(false);
+      const message = await readErrorMessage(response);
+      setStatus(message ?? '라이프사이클 이력을 불러오지 못했습니다.');
+      return;
+    }
+
+    const data = (await response.json()) as ObjectDefinitionLifecycleEvent[];
+    setLifecycleEvents(data);
+    setLifecycleEventsLoading(false);
+  }
+
+  function formatLifecycleAction(action: string) {
+    if (action === 'activate') {
+      return '활성화';
+    }
+    if (action === 'deactivate') {
+      return '비활성화';
+    }
+    if (action === 'new_version') {
+      return '신규 버전 생성';
+    }
+    return action;
   }
 
   function clonePlacements(items: PlacedObject[]) {
@@ -261,7 +597,11 @@ export default function SceneEditorPage() {
     }));
   }
 
-  function formatGenerationStatus(status: AiGenerationStatus) {
+  function formatGenerationStatus(status: AiGenerationStatus, errorCode?: string | null) {
+    if (status === 'failed' && errorCode === 'cancelled_by_user') {
+      return '취소됨';
+    }
+
     const labels: Record<AiGenerationStatus, string> = {
       queued: '대기 중',
       running: '생성 중',
@@ -336,7 +676,7 @@ export default function SceneEditorPage() {
 
       const [sceneRes, catalogRes, placementsRes, generatedRes, exportsRes] = await Promise.all([
         fetch(`/api/scenes/${sceneId}`, { cache: 'no-store' }),
-        fetch('/api/object-definitions', { cache: 'no-store' }),
+        fetch(buildCatalogApiPath(catalogIncludeInactive, catalogSourceFilter), { cache: 'no-store' }),
         fetch(`/api/scenes/${sceneId}/placed-objects`, { cache: 'no-store' }),
         fetch(`/api/scenes/${sceneId}/generated-objects`, { cache: 'no-store' }),
         fetch(`/api/scenes/${sceneId}/exports`, { cache: 'no-store' })
@@ -428,6 +768,10 @@ export default function SceneEditorPage() {
     const selectedCategory = catalogCategory;
 
     return catalog.filter((item) => {
+      if (catalogSourceFilter !== 'all' && item.source !== catalogSourceFilter) {
+        return false;
+      }
+
       if (selectedCategory !== 'all' && item.category !== selectedCategory) {
         return false;
       }
@@ -439,7 +783,43 @@ export default function SceneEditorPage() {
       const haystack = `${item.name} ${item.code} ${item.category}`.toLowerCase();
       return haystack.includes(query);
     });
-  }, [catalog, catalogQuery, catalogCategory]);
+  }, [catalog, catalogQuery, catalogCategory, catalogSourceFilter]);
+
+  const catalogFamilyStats = useMemo(() => {
+    const latestByFamily = new Map<string, ObjectDefinition>();
+    const familyCounts = new Map<string, number>();
+
+    for (const item of filteredCatalog) {
+      const family = getDefinitionFamily(item);
+      familyCounts.set(family, (familyCounts.get(family) ?? 0) + 1);
+
+      const prev = latestByFamily.get(family);
+      if (!prev) {
+        latestByFamily.set(family, item);
+        continue;
+      }
+
+      const prevVersion = getDefinitionVersion(prev) ?? 0;
+      const nextVersion = getDefinitionVersion(item) ?? 0;
+      if (nextVersion > prevVersion) {
+        latestByFamily.set(family, item);
+      }
+    }
+
+    return {
+      latestIdSet: new Set([...latestByFamily.values()].map((item) => item.id)),
+      familyCount: latestByFamily.size,
+      familyCounts
+    };
+  }, [filteredCatalog]);
+
+  const displayedCatalog = useMemo(() => {
+    if (!catalogLatestByFamilyOnly) {
+      return filteredCatalog;
+    }
+
+    return filteredCatalog.filter((item) => catalogFamilyStats.latestIdSet.has(item.id));
+  }, [catalogLatestByFamilyOnly, filteredCatalog, catalogFamilyStats.latestIdSet]);
 
   const catalogCategories = useMemo(() => {
     const set = new Set<string>();
@@ -605,6 +985,16 @@ export default function SceneEditorPage() {
       return;
     }
 
+    if (!AI_SOURCE_ALLOWED_TYPES.has(aiSourceFile.type)) {
+      setStatus('지원하지 않는 이미지 형식입니다. PNG/JPG/WebP 파일만 업로드할 수 있습니다.');
+      return;
+    }
+
+    if (aiSourceFile.size > AI_SOURCE_MAX_BYTES) {
+      setStatus('이미지 용량이 너무 큽니다. 10MB 이하 파일만 업로드할 수 있습니다.');
+      return;
+    }
+
     setAiCreating(true);
     setStatus('이미지 업로드 준비 중...');
 
@@ -617,7 +1007,8 @@ export default function SceneEditorPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           objectKey,
-          contentType: aiSourceFile.type || 'application/octet-stream'
+          contentType: aiSourceFile.type || 'application/octet-stream',
+          contentLength: aiSourceFile.size
         })
       });
     } catch {
@@ -690,8 +1081,18 @@ export default function SceneEditorPage() {
 
     if (!generationRes.ok) {
       setAiCreating(false);
-      const message = await readErrorMessage(generationRes);
-      setStatus(message ?? 'AI 생성 요청에 실패했습니다.');
+      const payload = await readErrorPayload(generationRes);
+      const policy = resolveAiErrorPolicy(payload.errorCode, payload.message);
+      pushAiEvent(
+        `생성 요청 실패${payload.errorCode ? ` (${payload.errorCode})` : ''}`,
+        policy.level,
+        'upload'
+      );
+      setStatus(
+        policy.retryable
+          ? `${policy.message} 잠시 후 다시 시도해 주세요.`
+          : policy.message
+      );
       return;
     }
 
@@ -724,11 +1125,19 @@ export default function SceneEditorPage() {
       setAiAutoPollingEnabled(false);
       setAiPollCountdownSec(null);
       setAiPollStopReason('failed');
-      pushAiEvent('생성 상태 실패', 'error', 'poll');
-      setStatus(job.errorMessage ?? 'AI 생성이 실패했습니다. 다른 이미지로 다시 시도해 주세요.');
+      const policy = resolveAiErrorPolicy(job.errorCode, job.errorMessage);
+      pushAiEvent(
+        `생성 상태 실패${job.errorCode ? ` (${job.errorCode})` : ''}`,
+        policy.level,
+        'poll'
+      );
+      setStatus(
+        policy.retryable
+          ? `${policy.message} 생성 상태 조회 또는 재시도를 시도해 주세요.`
+          : policy.message
+      );
       return;
     }
-
     setStatus(`AI 생성 진행 중: ${job.status} (${job.progress}%)`);
   }
 
@@ -778,8 +1187,13 @@ export default function SceneEditorPage() {
       if (!options?.silent) {
         pushAiEvent(`상태 조회 실패 (${response.status})`, 'error', 'poll');
         setAiRefreshing(false);
-        const message = await readErrorMessage(response);
-        setStatus(message ?? '생성 상태 조회에 실패했습니다.');
+        const payload = await readErrorPayload(response);
+        const policy = resolveAiErrorPolicy(payload.errorCode, payload.message);
+        setStatus(
+          policy.retryable
+            ? `${policy.message} 잠시 후 다시 조회해 주세요.`
+            : policy.message
+        );
       }
       return null;
     }
@@ -808,7 +1222,7 @@ export default function SceneEditorPage() {
       setLogRetryFeedback({
         entryId,
         tone: 'ok',
-        message: `재조회 성공 · ${formatGenerationStatus(job.status)} (${job.progress}%)`
+        message: `재조회 성공 · ${formatGenerationStatus(job.status, job.errorCode)} (${job.progress}%)`
       });
       pushAiEvent('로그 액션: 상태 재조회 성공', 'info', 'poll');
       return;
@@ -843,6 +1257,61 @@ export default function SceneEditorPage() {
     setStatus('자동 상태 확인을 다시 시작했습니다.');
   }
 
+  async function cancelActiveGeneration() {
+    if (!activeGenerationId) {
+      setStatus('취소할 생성 작업이 없습니다.');
+      return;
+    }
+
+    setAiCancelling(true);
+    setStatus('AI 생성 작업 취소 중...');
+
+    let response: Response;
+    try {
+      response = await fetch(`/api/ai/generations/${activeGenerationId}/cancel`, {
+        method: 'POST'
+      });
+    } catch {
+      setAiCancelling(false);
+      setStatus('네트워크 오류로 생성 작업 취소에 실패했습니다.');
+      return;
+    }
+
+    if (response.status === 401) {
+      setAiCancelling(false);
+      setSceneAvailable(false);
+      setStatus('세션이 만료되었습니다. 다시 로그인해 주세요.');
+      router.replace('/');
+      return;
+    }
+
+    if (!response.ok) {
+      setAiCancelling(false);
+      const payload = await readErrorPayload(response);
+      const policy = resolveAiErrorPolicy(payload.errorCode, payload.message);
+      pushAiEvent(
+        `생성 취소 실패${payload.errorCode ? ` (${payload.errorCode})` : ''}`,
+        policy.level,
+        'poll'
+      );
+      setStatus(
+        policy.retryable
+          ? `${policy.message} 잠시 후 다시 시도해 주세요.`
+          : policy.message
+      );
+      return;
+    }
+
+    const canceledJob = (await response.json()) as AiGenerationJob;
+    setActiveGeneration(canceledJob);
+    setAiCancelling(false);
+    setAiAutoPollingEnabled(false);
+    setAiPollCountdownSec(null);
+    setAiPollStopReason('failed');
+    pushAiEvent('생성 작업 수동 취소', 'warn', 'poll');
+    setStatus('AI 생성 작업을 취소했습니다.');
+  }
+
   async function promoteGenerationToCatalog() {
     if (!activeGenerationId) {
       setStatus('등록할 생성 결과가 없습니다.');
@@ -873,8 +1342,18 @@ export default function SceneEditorPage() {
 
     if (!response.ok) {
       setAiPromoting(false);
-      const message = await readErrorMessage(response);
-      setStatus(message ?? '카탈로그 등록에 실패했습니다. 생성 상태가 ready인지 확인해 주세요.');
+      const payload = await readErrorPayload(response);
+      const policy = resolveAiErrorPolicy(payload.errorCode, payload.message);
+      pushAiEvent(
+        `카탈로그 등록 실패${payload.errorCode ? ` (${payload.errorCode})` : ''}`,
+        policy.level,
+        'promote'
+      );
+      setStatus(
+        policy.retryable
+          ? `${policy.message} 상태 확인 후 다시 시도해 주세요.`
+          : policy.message
+      );
       return;
     }
 
@@ -926,8 +1405,18 @@ export default function SceneEditorPage() {
 
     if (!response.ok) {
       setAiPromoting(false);
-      const message = await readErrorMessage(response);
-      setStatus(message ?? '등록/배치에 실패했습니다. 생성 상태가 ready인지 확인해 주세요.');
+      const payload = await readErrorPayload(response);
+      const policy = resolveAiErrorPolicy(payload.errorCode, payload.message);
+      pushAiEvent(
+        `등록 후 배치 실패${payload.errorCode ? ` (${payload.errorCode})` : ''}`,
+        policy.level,
+        'promote'
+      );
+      setStatus(
+        policy.retryable
+          ? `${policy.message} 상태 확인 후 다시 시도해 주세요.`
+          : policy.message
+      );
       return;
     }
 
@@ -1705,6 +2194,19 @@ export default function SceneEditorPage() {
                     </button>
                     <button
                       className="btn btn-outline-secondary btn-sm"
+                      onClick={() => void cancelActiveGeneration()}
+                      disabled={
+                        aiCancelling ||
+                        !activeGenerationId ||
+                        !activeGeneration ||
+                        activeGeneration.status === 'ready' ||
+                        activeGeneration.status === 'failed'
+                      }
+                    >
+                      {aiCancelling ? '취소 중...' : '생성 취소'}
+                    </button>
+                    <button
+                      className="btn btn-outline-secondary btn-sm"
                       onClick={() => void promoteGenerationToCatalog()}
                       disabled={
                         aiPromoting ||
@@ -1770,7 +2272,7 @@ export default function SceneEditorPage() {
                       <div style={{ display: 'grid', gap: 6 }}>
                         <strong style={{ fontSize: 14 }}>생성 결과</strong>
                         <p className="subtle" style={{ margin: 0 }}>
-                          작업 {activeGeneration.id.slice(0, 8)} · 상태 {formatGenerationStatus(activeGeneration.status)} · 진행 {activeGeneration.progress}%
+                          작업 {activeGeneration.id.slice(0, 8)} · 상태 {formatGenerationStatus(activeGeneration.status, activeGeneration.errorCode)} · 진행 {activeGeneration.progress}%
                         </p>
                         {lastGenerationFetchedAt ? (
                           <p className="subtle" style={{ margin: 0 }}>
@@ -1778,7 +2280,7 @@ export default function SceneEditorPage() {
                           </p>
                         ) : null}
                         {activeGeneration.errorMessage ? (
-                          <p className="subtle" style={{ margin: 0, color: '#a03030' }}>
+                            <p className="subtle" style={{ margin: 0, color: activeGeneration.errorCode === 'cancelled_by_user' ? '#8a5a00' : '#a03030' }}>
                             오류: {activeGeneration.errorMessage}
                           </p>
                         ) : null}
@@ -2025,16 +2527,55 @@ export default function SceneEditorPage() {
                   </option>
                 ))}
               </select>
+              <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+                <select
+                  className="form-select form-select-sm"
+                  value={catalogSourceFilter}
+                  aria-label="소스 필터"
+                  onChange={(e) => {
+                    const nextSource = e.target.value as 'all' | 'manual' | 'ai';
+                    setCatalogSourceFilter(nextSource);
+                    void fetchCatalogOnly({ source: nextSource, includeInactive: catalogIncludeInactive, silent: true });
+                  }}
+                  style={{ maxWidth: 180 }}
+                >
+                  <option value="all">전체 소스</option>
+                  <option value="manual">수동</option>
+                  <option value="ai">AI</option>
+                </select>
+                <button
+                  className={`btn btn-sm ${catalogIncludeInactive ? 'btn-primary' : 'btn-outline-secondary'}`}
+                  onClick={() => {
+                    const next = !catalogIncludeInactive;
+                    setCatalogIncludeInactive(next);
+                    void fetchCatalogOnly({ includeInactive: next, source: catalogSourceFilter, silent: true });
+                  }}
+                  type="button"
+                >
+                  비활성 표시 {catalogIncludeInactive ? '켜짐' : '꺼짐'}
+                </button>
+              </div>
               <p className="subtle" style={{ margin: '8px 0 10px' }}>
-                {filteredCatalog.length} / {catalog.length} 표시 중
+                {displayedCatalog.length}
+                {catalogLatestByFamilyOnly ? ` / ${filteredCatalog.length}` : ''} / {catalog.length} 표시 중
+                {catalogLatestByFamilyOnly ? ` (패밀리 ${catalogFamilyStats.familyCount}개 최신)` : ''}
               </p>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+                <button
+                  className={`btn btn-sm ${catalogLatestByFamilyOnly ? 'btn-primary' : 'btn-outline-secondary'}`}
+                  type="button"
+                  onClick={() => setCatalogLatestByFamilyOnly((prev) => !prev)}
+                >
+                  패밀리 최신만 {catalogLatestByFamilyOnly ? '켜짐' : '꺼짐'}
+                </button>
+              </div>
               <div style={{ display: 'grid', gap: 8, maxHeight: 420, overflow: 'auto' }}>
-                {filteredCatalog.length === 0 ? (
+                {displayedCatalog.length === 0 ? (
                   <p className="subtle" style={{ margin: 0, padding: '8px 0' }}>
                     검색 결과가 없습니다.
                   </p>
                 ) : (
-                  filteredCatalog.map((def) => (
+                  displayedCatalog.map((def) => (
                     <div
                       key={def.id}
                       className="list-row"
@@ -2052,19 +2593,86 @@ export default function SceneEditorPage() {
                           <strong style={{ fontSize: 14 }}>
                             {def.name}
                             {def.id === recentAiObjectId ? ' (신규 AI)' : ''}
+                            {catalogFamilyStats.latestIdSet.has(def.id) ? ' (최신)' : ''}
                           </strong>
                           <p className="subtle" style={{ margin: '4px 0 0' }}>
                             {def.category} / {def.code}
+                            {def.source ? ` / ${def.source}` : ''}
+                            {getDefinitionVersion(def) !== null ? ` / v${getDefinitionVersion(def)}` : ''}
                           </p>
+                          <p className="subtle" style={{ margin: '4px 0 0' }}>
+                            family: {getDefinitionFamily(def)}
+                            {(catalogFamilyStats.familyCounts.get(getDefinitionFamily(def)) ?? 0) > 1
+                              ? ` · 버전 ${catalogFamilyStats.familyCounts.get(getDefinitionFamily(def))}개`
+                              : ''}
+                          </p>
+                          {isDefinitionInactive(def) ? (
+                            <p className="subtle" style={{ margin: '4px 0 0', color: '#8a5a00' }}>
+                              비활성 오브젝트
+                            </p>
+                          ) : null}
                         </div>
-                        <button className="btn btn-primary btn-sm" onClick={() => addFromCatalog(def)}>
-                          추가
-                        </button>
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                          <button
+                            className="btn btn-primary btn-sm"
+                            onClick={() => addFromCatalog(def)}
+                            disabled={isDefinitionInactive(def)}
+                          >
+                            추가
+                          </button>
+                          <button
+                            className="btn btn-outline-secondary btn-sm"
+                            onClick={() => void runCatalogLifecycleAction(def, isDefinitionInactive(def) ? 'activate' : 'deactivate')}
+                            disabled={catalogLifecycleBusyId !== null}
+                          >
+                            {isDefinitionInactive(def) ? '활성화' : '비활성화'}
+                          </button>
+                          <button
+                            className="btn btn-outline-secondary btn-sm"
+                            onClick={() => void runCatalogLifecycleAction(def, 'new-version')}
+                            disabled={catalogLifecycleBusyId !== null}
+                          >
+                            신규 버전
+                          </button>
+                            <button
+                              className="btn btn-outline-secondary btn-sm"
+                              onClick={() => void loadLifecycleEvents(def.id, def.name)}
+                              disabled={lifecycleEventsLoading}
+                            >
+                              이력
+                            </button>
+                        </div>
                       </div>
                     </div>
                   ))
                 )}
               </div>
+
+                {lifecycleEventsTargetId ? (
+                  <div className="list-row" style={{ marginTop: 10 }}>
+                    <div style={{ display: 'grid', gap: 6 }}>
+                      <strong style={{ fontSize: 13 }}>
+                        라이프사이클 이력: {lifecycleEventsTargetName ?? lifecycleEventsTargetId}
+                      </strong>
+                      {lifecycleEventsLoading ? (
+                        <p className="subtle" style={{ margin: 0 }}>이력 조회 중...</p>
+                      ) : lifecycleEvents.length === 0 ? (
+                        <p className="subtle" style={{ margin: 0 }}>이력이 없습니다.</p>
+                      ) : (
+                        lifecycleEvents.map((event) => (
+                          <div key={event.id} style={{ display: 'grid', gap: 2 }}>
+                            <p className="subtle" style={{ margin: 0 }}>
+                              {new Date(event.createdAt).toLocaleString('ko-KR')} · {formatLifecycleAction(event.action)}
+                            </p>
+                            <p className="subtle" style={{ margin: 0 }}>
+                              actor: {event.actorUserId}
+                            </p>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                ) : null}
             </>
           )}
         </aside>

@@ -86,9 +86,23 @@ model ObjectDefinition {
   createdAt               DateTime               @default(now())
   updatedAt               DateTime               @updatedAt
   placedObjects           PlacedObject[]
+  lifecycleEvents         ObjectDefinitionLifecycleEvent[]
 
   @@index([category])
   @@index([source])
+}
+
+model ObjectDefinitionLifecycleEvent {
+  id                 String           @id @default(cuid())
+  objectDefinitionId String
+  action             String
+  actorUserId        String
+  details            Json?
+  createdAt          DateTime         @default(now())
+  objectDefinition   ObjectDefinition @relation(fields: [objectDefinitionId], references: [id], onDelete: Cascade)
+
+  @@index([objectDefinitionId, createdAt])
+  @@index([actorUserId, createdAt])
 }
 
 model PlacedObject {

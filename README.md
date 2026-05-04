@@ -10,7 +10,7 @@
 1. bash /Volumes/MartinData/dev-project/querensys/SnapSpace 3D/scripts/docker-home-up.sh
 1. bash /Volumes/MartinData/dev-project/querensys/SnapSpace 3D/scripts/docker-home-down.sh
 
-### 도커 기준 실행 (권장)
+## 도커 기준 실행 (권장)
 
 서버 시작/재시작 이슈를 줄이기 위해 아래 순서로 도커 기준 실행을 권장합니다.
 
@@ -56,7 +56,7 @@ bash /Volumes/MartinData/dev-project/querensys/SnapSpace 3D/scripts/local-api-up
 bash /Volumes/MartinData/dev-project/querensys/SnapSpace 3D/scripts/local-web-up.sh
 ```
 
-### pnpm 스크립트 래퍼 (권장)
+## pnpm 스크립트 래퍼 (권장)
 
 반복 명령을 줄이기 위해 루트에서 아래 명령으로 동일 작업을 실행할 수 있습니다.
 
@@ -69,7 +69,7 @@ pnpm dev:web:local
 pnpm dev:local
 ```
 
-### API 실행 주의사항
+## API 실행 주의사항
 
 아래 명령은 환경변수 미설정 시 실패할 수 있으므로 로컬 개발에서는 사용하지 마세요.
 
@@ -106,6 +106,10 @@ bash /Volumes/MartinData/dev-project/querensys/SnapSpace 3D/scripts/verify-runti
 
 AI 생성 provider를 실제 키로 검증할 때는 아래 순서로 진행하세요.
 
+- `AI_PROVIDER_MODE=mock`: 내부 모의 생성(기본값)
+- `AI_PROVIDER_MODE=meshy`: 외부 상용 API 연동
+- `AI_PROVIDER_MODE=local`: 무료 로컬 추론 서버 연동
+
 1. 환경 변수 설정
 
 ```bash
@@ -123,17 +127,157 @@ export AI_PROVIDER_API_KEY='YOUR_API_KEY'
 export AI_PROVIDER_DEBUG='true'
 ```
 
-2. API 기동
+무료 로컬 추론 서버를 사용할 때는 아래와 같이 설정합니다.
+
+```bash
+cd /Volumes/MartinData/dev-project/querensys/SnapSpace 3D
+set -a
+source ./.env.example
+set +a
+export API_PORT=8081
+export DATABASE_URL='postgresql://snapspace:snapspace@localhost:5432/snapspace?schema=public'
+export REDIS_URL='redis://localhost:6379'
+export MINIO_ENDPOINT='localhost'
+export AI_PROVIDER_MODE='local'
+export AI_PROVIDER_BASE_URL='http://localhost:7001'
+export AI_PROVIDER_SUBMIT_PATH='/v1/image-to-3d/jobs'
+export AI_PROVIDER_STATUS_PATH='/v1/image-to-3d/jobs/{jobId}'
+export AI_PROVIDER_API_KEY=''
+export AI_PROVIDER_SOURCE_IMAGE_URL_TEMPLATE='http://localhost:8081/api/v1/assets/object-proxy?key={assetId}'
+export AI_PROVIDER_DEBUG='true'
+```
+
+`AI_PROVIDER_SOURCE_IMAGE_URL_TEMPLATE`는 로컬 추론 서버가 원본 이미지를 직접 읽어야 할 때 사용합니다.
+로컬 서버가 `sourceImageRef`만 받아도 동작한다면 비워도 됩니다.
+
+로컬 provider 단일 스모크 점검은 아래 명령으로 수행합니다.
+
+```bash
+cd /Volumes/MartinData/dev-project/querensys/SnapSpace 3D
+pnpm dev:provider:local:verify
+```
+
+로컬 추론 서버가 아직 없으면, 무료 Stub 서버로 즉시 흐름 검증이 가능합니다.
+
+```bash
+cd /Volumes/MartinData/dev-project/querensys/SnapSpace 3D
+pnpm dev:provider:local:verify:stub
+```
+
+Stub 서버만 따로 실행하려면 아래 명령을 사용합니다.
+
+```bash
+cd /Volumes/MartinData/dev-project/querensys/SnapSpace 3D
+pnpm dev:provider:local:stub
+```
+
+Docker 스택에서 local provider(stub)를 함께 쓰려면 `.env` 또는 쉘 환경에 아래 값을 설정하세요.
+
+```bash
+AI_PROVIDER_MODE=local
+AI_PROVIDER_BASE_URL=http://ai-provider-local:7001
+AI_PROVIDER_SUBMIT_PATH=/v1/image-to-3d/jobs
+AI_PROVIDER_STATUS_PATH=/v1/image-to-3d/jobs/{jobId}
+```
+
+그 다음 Docker를 재기동하고 런타임 검증을 수행합니다.
+
+```bash
+cd /Volumes/MartinData/dev-project/querensys/SnapSpace 3D
+pnpm dev:docker:restart
+pnpm dev:docker:verify
+```
+
+local provider 단독 API 흐름 검증은 호스트에서 아래 명령으로 확인할 수 있습니다.
+
+```bash
+cd /Volumes/MartinData/dev-project/querensys/SnapSpace 3D
+pnpm dev:provider:local:verify
+```
+
+오픈소스 교체 경로는 `opensrc` 프로필로 어댑터 컨테이너를 올려 계약(health/submit/poll) 호환성을 먼저 검증할 수 있습니다.
+
+```bash
+cd /Volumes/MartinData/dev-project/querensys/SnapSpace 3D
+pnpm dev:provider:opensrc:up
+curl -fsS http://localhost:7002/health
+```
+
+실제 오픈소스 엔진과 연결하려면 `.env`에 아래 값을 추가하세요.
+
+```bash
+OPENSRC_ENGINE_MODE=proxy
+OPENSRC_ENGINE_BASE_URL=http://your-opensrc-engine:port
+OPENSRC_ENGINE_SUBMIT_PATH=/v1/image-to-3d/jobs
+OPENSRC_ENGINE_STATUS_PATH=/v1/image-to-3d/jobs/{jobId}
+OPENSRC_ENGINE_API_KEY=
+```
+
+이 설정 시 `ai-provider-opensrc`는 submit/poll 요청을 엔진으로 프록시합니다. 값이 비어 있거나 `OPENSRC_ENGINE_MODE=stub`이면 기존 어댑터(stub) 모드로 동작합니다.
+
+opensrc 경로를 앱 전체로 검증하려면(웹 업로드 -> 생성 -> poll -> promote) 아래 명령으로 API/Worker를 opensrc 모드로 재기동한 뒤 E2E를 실행할 수 있습니다.
+
+```bash
+cd /Volumes/MartinData/dev-project/querensys/SnapSpace 3D
+pnpm dev:provider:opensrc:e2e
+```
+
+이 명령은 내부적으로 런타임 검증(`pnpm dev:docker:verify`) 후 E2E를 실행하므로, 재기동 직후 readiness race를 줄일 수 있습니다.
+
+어댑터 proxy 모드 체인을 포함해 검증하려면 아래 명령을 사용하세요(어댑터 -> local stub 엔진 프록시).
+
+```bash
+cd /Volumes/MartinData/dev-project/querensys/SnapSpace 3D
+pnpm dev:provider:opensrc:proxy:e2e
+```
+
+유료/무료 인식률 비교 벤치는 아래 명령으로 실행할 수 있습니다.
+
+```bash
+cd /Volumes/MartinData/dev-project/querensys/SnapSpace 3D
+pnpm bench:provider:compare
+```
+
+사전 준비:
+
+- 비교 이미지 파일을 `benchmarks/images`에 넣습니다(`.png`, `.jpg`, `.jpeg`, `.webp`).
+- 이미지와 같은 이름의 `.txt` 파일이 있으면 프롬프트로 사용합니다(예: `chair.png` + `chair.txt`).
+- 유료(meshy)까지 같이 비교하려면 아래 환경변수를 같이 설정하세요.
+
+```bash
+export BENCH_MESHY_BASE_URL='https://your-meshy-endpoint'
+export BENCH_MESHY_API_KEY='YOUR_API_KEY'
+```
+
+결과 파일:
+
+- `benchmarks/results/benchmark-*.csv`: 샘플별 상태/지연
+- `benchmarks/results/benchmark-*.json`: 요약 + 상세 행
+- `benchmarks/results/benchmark-*.manual-review.md`: shape/detail/usability 수동 점수표
+- `benchmarks/results/provider-compare-latest.md`: provider 비교 요약
+
+필요 시 아래 환경변수로 검증 강도를 조정할 수 있습니다.
+
+- `LOCAL_PROVIDER_VERIFY_SOURCE_IMAGE_REF`: submit 시 전달할 이미지 참조 키
+- `LOCAL_PROVIDER_VERIFY_PROMPT`: submit 프롬프트
+- `LOCAL_PROVIDER_VERIFY_QUALITY`: `low` 또는 `standard`
+- `LOCAL_PROVIDER_VERIFY_POLL_MAX`: 폴링 최대 횟수
+- `LOCAL_PROVIDER_VERIFY_POLL_DELAY`: 폴링 간격(초)
+- `LOCAL_PROVIDER_VERIFY_CURL_MAX_TIME`: 요청당 curl timeout(초)
+
+1. API 기동
 
 ```bash
 pnpm --filter @snapspace/api dev
 ```
 
-3. 웹에서 생성 요청 후 서버 로그 확인
+1. 웹에서 생성 요청 후 서버 로그 확인
+
 - submit_response / submit_mapped / poll_response / poll_mapped 로그를 확인합니다.
 - 응답 구조가 다르면 .env의 AI_PROVIDER_POLL_*_PATHS 값을 우선순위에 맞게 조정합니다.
 
-4. 최소 검증 기준
+1. 최소 검증 기준
+
 - 상태가 ready로 전이되는지
 - glbUrl 또는 glbAssetId가 매핑되는지
 - previewImageUrl 또는 previewImageAssetId가 매핑되는지

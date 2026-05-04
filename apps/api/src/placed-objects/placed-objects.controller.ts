@@ -60,4 +60,17 @@ export class PlacedObjectsController {
   ) {
     return this.placedObjectsService.bulkUpsert(sceneId, dto);
   }
+
+  @Post('rollforward')
+  @ApiOperation({ summary: '씬 배치 오브젝트 버전 롤포워드 교체' })
+  rollforward(
+    @Param('sceneId') sceneId: string,
+    @Body() dto: { fromObjectDefinitionId: string; toObjectDefinitionId: string }
+  ) {
+    return this.placedObjectsService.rollforwardObjectDefinition(
+      sceneId,
+      dto.fromObjectDefinitionId,
+      dto.toObjectDefinitionId
+    );
+  }
 }

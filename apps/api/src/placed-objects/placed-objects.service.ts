@@ -184,4 +184,46 @@ export class PlacedObjectsService {
 
     return { count: result.length, mode };
   }
+
+  async rollforwardObjectDefinition(
+    sceneId: string,
+    fromObjectDefinitionId: string,
+    toObjectDefinitionId: string
+  ) {
+    await this.ensureScene(sceneId);
+
+    if (!fromObjectDefinitionId || !toObjectDefinitionId) {
+      throw new BadRequestException('fromObjectDefinitionId and toObjectDefinitionId are required');
+    }
+
+    if (fromObjectDefinitionId === toObjectDefinitionId) {
+      throw new BadRequestException('fromObjectDefinitionId and toObjectDefinitionId must be different');
+    }
+
+    const [fromDef, toDef] = await Promise.all([
+      this.prisma.objectDefinition.findUnique({ where: { id: fromObjectDefinitionId } }),
+      this.prisma.objectDefinition.findUnique({ where: { id: toObjectDefinitionId } })
+    ]);
+
+    if (!fromDef || !toDef) {
+      throw new NotFoundException('Object definition not found');
+    }
+
+    const updated = await this.prisma.placedObject.updateMany({
+      where: {
+        sceneId,
+        objectDefinitionId: fromObjectDefinitionId
+      },
+      data: {
+        objectDefinitionId: toObjectDefinitionId
+      }
+    });
+
+    return {
+      sceneId,
+      fromObjectDefinitionId,
+      toObjectDefinitionId,
+      replacedCount: updated.count
+    };
+  }
 }

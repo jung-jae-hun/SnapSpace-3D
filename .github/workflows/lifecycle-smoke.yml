@@ -1,0 +1,320 @@
+name: lifecycle-smoke
+
+permissions:
+  contents: read
+  issues: write
+
+on:
+  workflow_dispatch:
+    inputs:
+      runRuntimeVerify:
+        description: "Run runtime verify before smoke"
+        required: false
+        default: true
+        type: boolean
+  schedule:
+    - cron: "30 2 * * *"
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    concurrency:
+      group: lifecycle-smoke-${{ github.ref }}
+      cancel-in-progress: false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.11.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Start docker dev runtime
+        run: pnpm dev:docker:restart
+
+      - name: Verify runtime
+        if: ${{ github.event_name == 'schedule' || inputs.runRuntimeVerify }}
+        run: pnpm dev:docker:verify
+
+      - name: Run lifecycle smoke flow
+        run: pnpm smoke:lifecycle
+
+      - name: Summarize lifecycle smoke report
+        if: always()
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+
+          const summaryPath = process.env.GITHUB_STEP_SUMMARY;
+          const dir = path.resolve('.tmp/smoke-lifecycle');
+
+          function append(text) {
+            fs.appendFileSync(summaryPath, `${text}\n`);
+          }
+
+          append('## Lifecycle Smoke Summary');
+
+          if (!fs.existsSync(dir)) {
+            append('- Report directory not found: `.tmp/smoke-lifecycle`');
+            process.exit(0);
+          }
+
+          const files = fs
+            .readdirSync(dir)
+            .filter((name) => name.endsWith('.json'))
+            .sort();
+
+          if (files.length === 0) {
+            append('- No lifecycle smoke JSON reports were produced.');
+            process.exit(0);
+          }
+
+          const latest = files[files.length - 1];
+          const report = JSON.parse(fs.readFileSync(path.join(dir, latest), 'utf8'));
+
+          append(`- Report file: \`${latest}\``);
+          append(`- Scene: \`${report.sceneId ?? 'n/a'}\``);
+          append(`- Replaced count: **${report.replacedCount ?? 'n/a'}**`);
+
+          const checks = report.checks || {};
+          append('- Checks:');
+          for (const [key, value] of Object.entries(checks)) {
+            append(`  - ${key}: ${value === true ? 'PASS' : value === false ? 'FAIL' : String(value)}`);
+          }
+          NODE
+
+      - name: Upload lifecycle smoke report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lifecycle-smoke-report
+          path: .tmp/smoke-lifecycle/*.json
+          if-no-files-found: warn
+
+      - name: Tear down docker dev runtime
+        if: always()
+        run: pnpm dev:docker:down
+
+  notify_failure:
+    if: ${{ always() && github.event_name == 'schedule' && needs.smoke.result == 'failure' }}
+    needs:
+      - smoke
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create or update failure issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const labelName = 'lifecycle-smoke-alert';
+            const severityHigh = 'severity:high';
+            const severityMedium = 'severity:medium';
+            const severityLow = 'severity:low';
+            const areaLabel = 'area:ci';
+            const title = '[CI] lifecycle-smoke scheduled run failed';
+
+            let failedJob;
+            let failedStep;
+            let failedStepName = 'unknown';
+            let severityReason = 'default';
+
+            try {
+              const jobs = await github.rest.actions.listJobsForWorkflowRun({
+                owner,
+                repo,
+                run_id: context.runId,
+                per_page: 100
+              });
+
+              failedJob = jobs.data.jobs.find((job) => job.conclusion === 'failure');
+              failedStep = failedJob?.steps?.find((step) => step.conclusion === 'failure');
+              failedStepName = failedStep?.name ?? 'unknown';
+            } catch (error) {
+              const message = error instanceof Error ? error.message : String(error);
+              core.warning(`Unable to inspect failed workflow step: ${message}`);
+              severityReason = 'jobs_lookup_failed';
+            }
+
+            let severityLabel = severityHigh;
+            if (failedStepName === 'Run lifecycle smoke flow') {
+              severityLabel = severityMedium;
+              severityReason = 'smoke_flow_failed';
+            } else if (failedStepName === 'Summarize lifecycle smoke report') {
+              severityLabel = severityLow;
+              severityReason = 'summary_failed';
+            } else if (failedStepName !== 'unknown') {
+              severityReason = `step_failed:${failedStepName}`;
+            }
+
+            // Ensure labels exist.
+            for (const label of [
+              {
+                name: labelName,
+                color: 'd73a4a',
+                description: 'Alert issues created by lifecycle-smoke scheduled failures'
+              },
+              {
+                name: severityHigh,
+                color: 'b60205',
+                description: 'High severity operational issue'
+              },
+              {
+                name: severityMedium,
+                color: 'fbca04',
+                description: 'Medium severity operational issue'
+              },
+              {
+                name: severityLow,
+                color: '0e8a16',
+                description: 'Low severity operational issue'
+              },
+              {
+                name: areaLabel,
+                color: '0e8a16',
+                description: 'Continuous integration area'
+              }
+            ]) {
+              try {
+                await github.rest.issues.getLabel({ owner, repo, name: label.name });
+              } catch (error) {
+                await github.rest.issues.createLabel({
+                  owner,
+                  repo,
+                  name: label.name,
+                  color: label.color,
+                  description: label.description
+                });
+              }
+            }
+
+            const workflowUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
+            const artifactHintUrl = `${workflowUrl}#artifacts`;
+            const body = [
+              '자동 야간 lifecycle-smoke 실행이 실패했습니다.',
+              '',
+              '### 실행 정보',
+              `- Workflow run: ${workflowUrl}`,
+              `- Artifacts: ${artifactHintUrl}`,
+              `- Ref: ${context.ref}`,
+              `- SHA: ${context.sha}`,
+              `- Triggered at (UTC): ${new Date().toISOString()}`,
+              `- Failed job: ${failedJob?.name ?? 'unknown'}`,
+              `- Failed step: ${failedStepName}`,
+              `- Severity: ${severityLabel}`,
+              `- Severity reason: ${severityReason}`,
+              '',
+              '### 확인 체크리스트',
+              '- [ ] 실패 단계(step)와 에러 로그를 확인했다.',
+              '- [ ] 최근 코드/설정/인프라 변경점을 확인했다.',
+              '- [ ] 임시 복구(재실행/재기동/롤백) 여부를 결정했다.',
+              '- [ ] 근본 원인(RCA)을 기록했다.',
+              '- [ ] 재발 방지 액션(테스트/가드/문서)을 등록했다.',
+              '',
+              '### 조치 메모',
+              '- 영향 범위:',
+              '- 임시 대응:',
+              '- 근본 원인:',
+              '- 재발 방지:'
+            ].join('\n');
+
+            const openIssues = await github.rest.issues.listForRepo({
+              owner,
+              repo,
+              state: 'open',
+              labels: labelName,
+              per_page: 100
+            });
+
+            const existing = openIssues.data.find((issue) => issue.title === title);
+            if (existing) {
+              await github.rest.issues.update({
+                owner,
+                repo,
+                issue_number: existing.number,
+                labels: [labelName, severityLabel, areaLabel]
+              });
+
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: existing.number,
+                body
+              });
+              core.info(`Updated existing alert issue #${existing.number}`);
+              return;
+            }
+
+            const created = await github.rest.issues.create({
+              owner,
+              repo,
+              title,
+              body,
+              labels: [labelName, severityLabel, areaLabel]
+            });
+
+            core.info(`Created alert issue #${created.data.number}`);
+
+  notify_recovery:
+    if: ${{ always() && github.event_name == 'schedule' && needs.smoke.result == 'success' }}
+    needs:
+      - smoke
+    runs-on: ubuntu-latest
+    steps:
+      - name: Close existing alert issue on recovery
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const labelName = 'lifecycle-smoke-alert';
+            const title = '[CI] lifecycle-smoke scheduled run failed';
+            const workflowUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
+
+            const openIssues = await github.rest.issues.listForRepo({
+              owner,
+              repo,
+              state: 'open',
+              labels: labelName,
+              per_page: 100
+            });
+
+            const existing = openIssues.data.find((issue) => issue.title === title);
+            if (!existing) {
+              core.info('No open lifecycle-smoke alert issue to close.');
+              return;
+            }
+
+            await github.rest.issues.createComment({
+              owner,
+              repo,
+              issue_number: existing.number,
+              body: [
+                '자동 야간 lifecycle-smoke 실행이 복구되었습니다.',
+                '',
+                `- Recovery run: ${workflowUrl}`,
+                `- Closed at (UTC): ${new Date().toISOString()}`
+              ].join('\n')
+            });
+
+            await github.rest.issues.update({
+              owner,
+              repo,
+              issue_number: existing.number,
+              state: 'closed'
+            });
+
+            core.info(`Closed alert issue #${existing.number} after recovery.`);

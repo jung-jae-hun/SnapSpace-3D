@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { Client as MinioClient } from 'minio';
 import { CreateUploadUrlDto } from './dto/create-upload-url.dto';
 
@@ -17,6 +17,10 @@ export class AssetsService {
   private readonly providerDownloadMaxBytes = Number(
     process.env.AI_PROVIDER_DOWNLOAD_MAX_BYTES ?? `${50 * 1024 * 1024}`
   );
+  private readonly aiSourceUploadMaxBytes = Number(
+    process.env.AI_SOURCE_UPLOAD_MAX_BYTES ?? `${10 * 1024 * 1024}`
+  );
+  private readonly aiSourceAllowedMimeTypes = new Set(['image/png', 'image/jpeg', 'image/webp']);
   private readonly minioClient = new MinioClient({
     endPoint: this.minioInternalEndpoint,
     port: this.minioPort,
@@ -40,6 +44,24 @@ export class AssetsService {
   }
 
   async createUploadUrl(dto: CreateUploadUrlDto) {
+    if (dto.objectKey.startsWith('images/ai-source/')) {
+      if (!this.aiSourceAllowedMimeTypes.has(dto.contentType)) {
+        throw new BadRequestException(
+          `Unsupported AI source image type: ${dto.contentType}. Allowed: image/png, image/jpeg, image/webp`
+        );
+      }
+
+      if (!dto.contentLength || dto.contentLength <= 0) {
+        throw new BadRequestException('contentLength is required for AI source image upload');
+      }
+
+      if (dto.contentLength > this.aiSourceUploadMaxBytes) {
+        throw new BadRequestException(
+          `AI source image too large: ${dto.contentLength} > ${this.aiSourceUploadMaxBytes}`
+        );
+      }
+    }
+
     await this.ensureBucket();
 
     const expiresInSeconds = 60 * 10;

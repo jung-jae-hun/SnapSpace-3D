@@ -31,32 +31,66 @@ export type StartProviderInput = {
 @Injectable()
 export class AiProviderClient {
   private readonly logger = new Logger(AiProviderClient.name);
-  private readonly mode = process.env.AI_PROVIDER_MODE ?? 'mock';
+  private readonly mode = (process.env.AI_PROVIDER_MODE ?? 'mock').toLowerCase();
+  private readonly localFallbackToMock =
+    (process.env.AI_PROVIDER_LOCAL_FALLBACK_TO_MOCK ?? 'true').toLowerCase() !== 'false';
   private readonly baseUrl = process.env.AI_PROVIDER_BASE_URL ?? '';
   private readonly submitPath = process.env.AI_PROVIDER_SUBMIT_PATH ?? '/v1/image-to-3d/jobs';
   private readonly statusPathTemplate =
     process.env.AI_PROVIDER_STATUS_PATH ?? '/v1/image-to-3d/jobs/{jobId}';
   private readonly apiKey = process.env.AI_PROVIDER_API_KEY ?? '';
+  private readonly sourceImageUrlTemplate = process.env.AI_PROVIDER_SOURCE_IMAGE_URL_TEMPLATE ?? '';
   private readonly debug = process.env.AI_PROVIDER_DEBUG === 'true';
   private readonly submitJobIdPaths = this.parsePaths(
     process.env.AI_PROVIDER_SUBMIT_JOB_ID_PATHS,
-    ['jobId', 'id', 'result.id', 'data.id', 'result.jobId']
+    [
+      'jobId',
+      'id',
+      'result.id',
+      'data.id',
+      'result.jobId',
+      'job_id',
+      'task_id',
+      'data.task_id',
+      'result.task_id'
+    ]
   );
   private readonly pollStatusPaths = this.parsePaths(
     process.env.AI_PROVIDER_POLL_STATUS_PATHS,
-    ['status', 'result.status', 'data.status']
+    ['status', 'state', 'result.status', 'data.status', 'result.state', 'data.state']
   );
   private readonly pollProgressPaths = this.parsePaths(
     process.env.AI_PROVIDER_POLL_PROGRESS_PATHS,
-    ['progress', 'result.progress', 'data.progress']
+    [
+      'progress',
+      'percentage',
+      'percent',
+      'result.progress',
+      'data.progress',
+      'result.percentage',
+      'data.percentage'
+    ]
   );
   private readonly pollErrorCodePaths = this.parsePaths(
     process.env.AI_PROVIDER_POLL_ERROR_CODE_PATHS,
-    ['errorCode', 'error.code', 'result.error.code', 'data.error.code']
+    [
+      'errorCode',
+      'error.code',
+      'result.error.code',
+      'data.error.code',
+      'errorCode.value'
+    ]
   );
   private readonly pollErrorMessagePaths = this.parsePaths(
     process.env.AI_PROVIDER_POLL_ERROR_MESSAGE_PATHS,
-    ['errorMessage', 'error.message', 'result.error.message', 'data.error.message']
+    [
+      'errorMessage',
+      'message',
+      'error.message',
+      'result.error.message',
+      'data.error.message',
+      'errorMessage.value'
+    ]
   );
   private readonly pollGlbAssetIdPaths = this.parsePaths(
     process.env.AI_PROVIDER_POLL_GLB_ASSET_ID_PATHS,
@@ -86,7 +120,10 @@ export class AiProviderClient {
       'result.model_urls.glb',
       'result.model_urls.glb_url',
       'model_urls.glb',
-      'model_urls.glb_url'
+      'model_urls.glb_url',
+      'output.glb_url',
+      'result.output.glb_url',
+      'data.output.glb_url'
     ]
   );
   private readonly pollObjUrlPaths = this.parsePaths(
@@ -98,7 +135,10 @@ export class AiProviderClient {
       'result.model_urls.obj',
       'result.model_urls.obj_url',
       'model_urls.obj',
-      'model_urls.obj_url'
+      'model_urls.obj_url',
+      'output.obj_url',
+      'result.output.obj_url',
+      'data.output.obj_url'
     ]
   );
   private readonly pollPreviewUrlPaths = this.parsePaths(
@@ -111,7 +151,10 @@ export class AiProviderClient {
       'data.output.previewImageUrl',
       'data.output.thumbnailUrl',
       'result.thumbnail_url',
-      'thumbnail_url'
+      'thumbnail_url',
+      'output.preview_url',
+      'result.output.preview_url',
+      'data.output.preview_url'
     ]
   );
   private readonly pollBoundsPaths = this.parsePaths(
@@ -128,40 +171,107 @@ export class AiProviderClient {
     }
   >();
 
+  private seedMockState(providerJobId: string, input: StartProviderInput) {
+    this.mockState.set(providerJobId, {
+      startedAt: Date.now(),
+      quality: input.quality,
+      sourceImageAssetId: input.sourceImageAssetId
+    });
+  }
+
+  private createFallbackMockJob(input: StartProviderInput) {
+    const providerJobId = `mock-fallback-${input.localJobId}`;
+    this.seedMockState(providerJobId, input);
+    this.logger.warn(
+      `Local provider unavailable, fallback to mock enabled (job=${input.localJobId})`
+    );
+    return { providerJobId };
+  }
+
+  private isMockJobId(providerJobId: string) {
+    return providerJobId.startsWith('mock-');
+  }
+
   isMockMode() {
-    return this.mode !== 'meshy';
+    return this.mode === 'mock';
+  }
+
+  private isLocalMode() {
+    return this.mode === 'local';
+  }
+
+  private isOpenSrcMode() {
+    return this.mode === 'opensrc';
+  }
+
+  private getAuthHeader(): Record<string, string> {
+    if (this.mode === 'meshy') {
+      if (!this.apiKey) {
+        throw new Error('AI provider is not configured (AI_PROVIDER_API_KEY)');
+      }
+      return { Authorization: `Bearer ${this.apiKey}` };
+    }
+
+    if ((this.isLocalMode() || this.isOpenSrcMode()) && this.apiKey) {
+      return { Authorization: `Bearer ${this.apiKey}` };
+    }
+
+    return {};
+  }
+
+  private resolveSourceImageUrl(sourceImageAssetId: string) {
+    if (!this.sourceImageUrlTemplate) {
+      return undefined;
+    }
+
+    return this.sourceImageUrlTemplate.replace('{assetId}', encodeURIComponent(sourceImageAssetId));
   }
 
   async startGeneration(input: StartProviderInput): Promise<{ providerJobId: string }> {
     if (this.isMockMode()) {
       const providerJobId = `mock-${input.localJobId}`;
-      this.mockState.set(providerJobId, {
-        startedAt: Date.now(),
-        quality: input.quality,
-        sourceImageAssetId: input.sourceImageAssetId
-      });
+      this.seedMockState(providerJobId, input);
       return { providerJobId };
     }
 
-    if (!this.baseUrl || !this.apiKey) {
-      throw new Error('AI provider is not configured (AI_PROVIDER_BASE_URL/API_KEY)');
+    if (!this.baseUrl) {
+      throw new Error('AI provider is not configured (AI_PROVIDER_BASE_URL)');
     }
 
-    const response = await fetch(`${this.baseUrl}${this.submitPath}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${this.apiKey}`
-      },
-      body: JSON.stringify({
-        sourceImageRef: input.sourceImageAssetId,
-        prompt: input.prompt,
-        quality: input.quality
-      })
-    });
+    const sourceImageUrl = this.resolveSourceImageUrl(input.sourceImageAssetId);
+
+    let response: Response;
+    try {
+      response = await fetch(`${this.baseUrl}${this.submitPath}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...this.getAuthHeader()
+        },
+        body: JSON.stringify({
+          sourceImageRef: input.sourceImageAssetId,
+          sourceImageUrl,
+          prompt: input.prompt,
+          quality: input.quality,
+          mode: this.mode
+        })
+      });
+    } catch (error) {
+      if (this.isLocalMode() && this.localFallbackToMock) {
+        return this.createFallbackMockJob(input);
+      }
+      const reason = error instanceof Error ? error.message : String(error);
+      throw new Error(`provider_start_failed: ${reason}`);
+    }
 
     if (!response.ok) {
       const text = await response.text();
+      if (this.isLocalMode() && this.localFallbackToMock) {
+        this.logger.warn(
+          `Local provider submit failed (${response.status}), fallback to mock enabled (job=${input.localJobId})`
+        );
+        return this.createFallbackMockJob(input);
+      }
       throw new Error(`provider_start_failed: ${response.status} ${text.slice(0, 300)}`);
     }
 
@@ -181,19 +291,19 @@ export class AiProviderClient {
   }
 
   async pollGeneration(providerJobId: string): Promise<ProviderPollResult> {
-    if (this.isMockMode()) {
+    if (this.isMockMode() || this.isMockJobId(providerJobId)) {
       return this.pollMock(providerJobId);
     }
 
-    if (!this.baseUrl || !this.apiKey) {
-      throw new Error('AI provider is not configured (AI_PROVIDER_BASE_URL/API_KEY)');
+    if (!this.baseUrl) {
+      throw new Error('AI provider is not configured (AI_PROVIDER_BASE_URL)');
     }
 
     const statusPath = this.statusPathTemplate.replace('{jobId}', providerJobId);
     const response = await fetch(`${this.baseUrl}${statusPath}`, {
       method: 'GET',
       headers: {
-        Authorization: `Bearer ${this.apiKey}`
+        ...this.getAuthHeader()
       }
     });
 
