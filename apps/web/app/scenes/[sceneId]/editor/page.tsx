@@ -420,7 +420,7 @@ export default function SceneEditorPage() {
   }, [catalogIncludeInactive, catalogSourceFilter, sceneAvailable, sceneId]);
 
   useEffect(() => {
-    const nextQuery = buildSceneEditorQueryParams().toString();
+    const nextQuery = toSortedQueryString(buildSceneEditorQueryParams());
     const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ''}${window.location.hash}`;
     window.history.replaceState(null, '', nextUrl);
   }, [
@@ -485,6 +485,23 @@ export default function SceneEditorPage() {
     }
 
     return params;
+  }
+
+  function toSortedQueryString(params: URLSearchParams) {
+    const entries = [...params.entries()].sort((a, b) => {
+      const keyOrder = a[0].localeCompare(b[0]);
+      if (keyOrder !== 0) {
+        return keyOrder;
+      }
+      return a[1].localeCompare(b[1]);
+    });
+
+    const sortedParams = new URLSearchParams();
+    for (const [key, value] of entries) {
+      sortedParams.append(key, value);
+    }
+
+    return sortedParams.toString();
   }
 
   function buildLifecycleExpandedStorageKey(definitionId: string) {
