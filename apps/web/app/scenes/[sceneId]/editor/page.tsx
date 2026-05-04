@@ -362,6 +362,16 @@ export default function SceneEditorPage() {
     if (filter === 'activate' || filter === 'deactivate' || filter === 'new_version') {
       setLifecycleActionFilter(filter);
     }
+
+    const source = params.get('catalogSource');
+    if (source === 'manual' || source === 'ai' || source === 'all') {
+      setCatalogSourceFilter(source);
+    }
+
+    const includeInactive = params.get('catalogIncludeInactive');
+    if (includeInactive === 'true' || includeInactive === '1') {
+      setCatalogIncludeInactive(true);
+    }
   }, []);
 
   useEffect(() => {
@@ -372,10 +382,22 @@ export default function SceneEditorPage() {
       params.set('lifecycleAction', lifecycleActionFilter);
     }
 
+    if (catalogSourceFilter === 'all') {
+      params.delete('catalogSource');
+    } else {
+      params.set('catalogSource', catalogSourceFilter);
+    }
+
+    if (catalogIncludeInactive) {
+      params.set('catalogIncludeInactive', 'true');
+    } else {
+      params.delete('catalogIncludeInactive');
+    }
+
     const nextQuery = params.toString();
     const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ''}${window.location.hash}`;
     window.history.replaceState(null, '', nextUrl);
-  }, [lifecycleActionFilter]);
+  }, [lifecycleActionFilter, catalogSourceFilter, catalogIncludeInactive]);
 
   async function readErrorMessage(response: Response) {
     const payload = await readErrorPayload(response);
@@ -935,7 +957,18 @@ export default function SceneEditorPage() {
       'detailsJson'
     ];
 
-    const csv = [header.join(','), ...rows.map((row) => row.join(','))].join('\n');
+    const metadata = [
+      `# exportedAt=${new Date().toISOString()}`,
+      `# sceneId=${sceneId}`,
+      `# lifecycleTarget=${lifecycleEventsTargetName ?? lifecycleEventsTargetId ?? 'n/a'}`,
+      `# lifecycleActionFilter=${lifecycleActionFilter}`,
+      `# catalogSourceFilter=${catalogSourceFilter}`,
+      `# catalogIncludeInactive=${catalogIncludeInactive ? 'true' : 'false'}`,
+      `# totalEvents=${filteredLifecycleEvents.length}`,
+      `# unresolvedRefs=${lifecycleUnresolvedSummary.unresolvedCount}`
+    ];
+
+    const csv = [...metadata, header.join(','), ...rows.map((row) => row.join(','))].join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
 
@@ -3254,6 +3287,18 @@ export default function SceneEditorPage() {
                                           카탈로그에서 찾기
                                         </button>
                                       ) : null}
+                                      <button
+                                        className="btn btn-outline-secondary btn-sm"
+                                        type="button"
+                                        onClick={() =>
+                                          void copyTextToClipboard(
+                                            `${formatLifecycleDetailKey(entry.key)}: ${entry.value}`,
+                                            '이력 상세 항목'
+                                          )
+                                        }
+                                      >
+                                        행 복사
+                                      </button>
                                     </div>
                                   ))}
                                 </div>
