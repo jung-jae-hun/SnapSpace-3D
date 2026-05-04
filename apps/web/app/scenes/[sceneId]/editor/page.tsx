@@ -661,14 +661,23 @@ export default function SceneEditorPage() {
 
   function getLifecycleDetailEntries(details?: Record<string, unknown> | null) {
     if (!details || typeof details !== 'object') {
-      return [] as Array<{ key: string; value: string; unresolvedRef: boolean }>;
+      return [] as Array<{
+        key: string;
+        value: string;
+        unresolvedRef: boolean;
+        objectDefinitionId?: string;
+      }>;
     }
 
     return Object.entries(details)
       .map(([key, value]) => ({
         key,
         value: formatLifecycleDetailValue(key, value),
-        unresolvedRef: isUnresolvedLifecycleReference(key, value)
+        unresolvedRef: isUnresolvedLifecycleReference(key, value),
+        objectDefinitionId:
+          isObjectDefinitionRefKey(key) && typeof value === 'string' && value.trim().length > 0
+            ? value
+            : undefined
       }))
       .slice(0, 6);
   }
@@ -678,6 +687,26 @@ export default function SceneEditorPage() {
       ...prev,
       [eventId]: !prev[eventId]
     }));
+  }
+
+  function focusCatalogByObjectDefinitionId(objectDefinitionId: string) {
+    const resolved = catalogById.get(objectDefinitionId);
+
+    setSidebarTab('catalog');
+    setCatalogCategory('all');
+    setCatalogSourceFilter('all');
+    setCatalogIncludeInactive(true);
+    setCatalogLatestByFamilyOnly(false);
+
+    if (resolved) {
+      setCatalogQuery(`${resolved.name} ${resolved.code}`);
+      setStatus(`카탈로그에서 오브젝트를 찾았습니다: ${resolved.name} (${resolved.code})`);
+    } else {
+      setCatalogQuery(objectDefinitionId);
+      setStatus(`카탈로그에서 오브젝트 ID를 검색합니다: ${objectDefinitionId}`);
+    }
+
+    void fetchCatalogOnly({ includeInactive: true, source: 'all', silent: true });
   }
 
   function clonePlacements(items: PlacedObject[]) {
@@ -2869,6 +2898,17 @@ export default function SceneEditorPage() {
                                         >
                                           미해결
                                         </span>
+                                      ) : null}
+                                      {entry.objectDefinitionId ? (
+                                        <button
+                                          className="btn btn-outline-secondary btn-sm"
+                                          type="button"
+                                          onClick={() =>
+                                            focusCatalogByObjectDefinitionId(entry.objectDefinitionId!)
+                                          }
+                                        >
+                                          카탈로그에서 찾기
+                                        </button>
                                       ) : null}
                                     </div>
                                   ))}
