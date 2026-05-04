@@ -127,4 +127,9 @@ git bundle create ../SnapSpace-3D-rollback-$(date +%Y%m%d-%H%M%S).bundle --all
 
 3. 수동 실행 시 권장 입력
 - `runRuntimeVerify=true` (기본값 유지)
+- `runAiLocalE2E=true` (AI 생성/alias promote 회귀까지 함께 점검할 때)
+
+4. 현재 알려진 주의사항
+- 일부 런타임 조합에서 web proxy 경로 `/api/ai/generations/:id/promote`가 404 HTML로 응답할 수 있다.
+- 회귀 검증은 `scripts/verify-ai-local-e2e.sh` 기준으로 수행하며, promote/alias 검증은 API 직통(Bearer) 호출 경로를 사용한다.
 
