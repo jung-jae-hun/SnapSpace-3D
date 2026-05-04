@@ -214,6 +214,7 @@ export default function SceneEditorPage() {
   const [generationPreviewUrl, setGenerationPreviewUrl] = useState<string | null>(null);
   const [generationPreviewLoading, setGenerationPreviewLoading] = useState(false);
   const [autoOpenPreviewOnReady, setAutoOpenPreviewOnReady] = useState(true);
+  const [relativeTimeNowMs, setRelativeTimeNowMs] = useState(() => Date.now());
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -285,6 +286,14 @@ export default function SceneEditorPage() {
   useEffect(() => {
     latestPlacementsRef.current = placements;
   }, [placements]);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setRelativeTimeNowMs(Date.now());
+    }, 30 * 1000);
+
+    return () => clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     const applyHash = () => {
@@ -630,7 +639,7 @@ export default function SceneEditorPage() {
       return '시간 정보 없음';
     }
 
-    const diffMs = target - Date.now();
+    const diffMs = target - relativeTimeNowMs;
     const absMs = Math.abs(diffMs);
     const rtf = new Intl.RelativeTimeFormat('ko-KR', { numeric: 'auto' });
 
@@ -1055,6 +1064,12 @@ export default function SceneEditorPage() {
     return counts;
   }, [filteredLifecycleEvents]);
 
+  const lifecycleActionStats = useMemo(() => {
+    return [...lifecycleActionCounts.entries()]
+      .map(([action, count]) => ({ action, count, label: formatLifecycleAction(action) }))
+      .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+  }, [lifecycleActionCounts]);
+
   const lifecycleUnresolvedSummary = useMemo(() => {
     let unresolvedCount = 0;
     let eventsWithUnresolved = 0;
@@ -1084,10 +1099,10 @@ export default function SceneEditorPage() {
       `- 미해결 참조: ${lifecycleUnresolvedSummary.unresolvedCount}건 (이벤트 ${lifecycleUnresolvedSummary.eventsWithUnresolved}개)`
     ];
 
-    if (lifecycleActionCounts.size > 0) {
+    if (lifecycleActionStats.length > 0) {
       lines.push('- 액션 분포:');
-      for (const [action, count] of lifecycleActionCounts.entries()) {
-        lines.push(`  - ${formatLifecycleAction(action)}: ${count}`);
+      for (const item of lifecycleActionStats) {
+        lines.push(`  - ${item.label}: ${item.count}`);
       }
     }
 
@@ -2965,6 +2980,26 @@ export default function SceneEditorPage() {
                             미해결 참조 {lifecycleUnresolvedSummary.unresolvedCount}건
                             (이벤트 {lifecycleUnresolvedSummary.eventsWithUnresolved}개)
                           </p>
+                        </div>
+                      ) : null}
+                      {lifecycleActionStats.length > 0 ? (
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                          {lifecycleActionStats.map((item) => (
+                            <span
+                              key={item.action}
+                              className="subtle"
+                              style={{
+                                margin: 0,
+                                fontSize: 12,
+                                border: '1px solid #d8e1e8',
+                                borderRadius: 999,
+                                padding: '2px 8px',
+                                background: '#f8fafc'
+                              }}
+                            >
+                              {item.label} {item.count}
+                            </span>
+                          ))}
                         </div>
                       ) : null}
                       {lifecycleEventsLoading ? (
