@@ -217,6 +217,7 @@ export default function SceneEditorPage() {
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const catalogHighlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const dragIndexRef = useRef<number | null>(null);
   const dragStartRef = useRef<{ x: number; y: number } | null>(null);
@@ -252,8 +253,34 @@ export default function SceneEditorPage() {
       if (noticeTimer.current) {
         clearTimeout(noticeTimer.current);
       }
+      if (catalogHighlightTimer.current) {
+        clearTimeout(catalogHighlightTimer.current);
+      }
     };
   }, [sceneId]);
+
+  useEffect(() => {
+    if (!catalogHighlightedId) {
+      return;
+    }
+
+    if (catalogHighlightTimer.current) {
+      clearTimeout(catalogHighlightTimer.current);
+    }
+
+    catalogHighlightTimer.current = setTimeout(() => {
+      setCatalogHighlightedId((current) =>
+        current === catalogHighlightedId ? null : current
+      );
+      catalogHighlightTimer.current = null;
+    }, 3000);
+
+    return () => {
+      if (catalogHighlightTimer.current) {
+        clearTimeout(catalogHighlightTimer.current);
+      }
+    };
+  }, [catalogHighlightedId]);
 
   useEffect(() => {
     latestPlacementsRef.current = placements;
