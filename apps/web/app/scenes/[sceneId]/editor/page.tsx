@@ -171,6 +171,9 @@ export default function SceneEditorPage() {
   const [lifecycleEventsLoading, setLifecycleEventsLoading] = useState(false);
   const [lifecycleEvents, setLifecycleEvents] = useState<ObjectDefinitionLifecycleEvent[]>([]);
   const [lifecycleActionFilter, setLifecycleActionFilter] = useState<LifecycleActionFilter>('all');
+  const [lifecycleDetailTruncateMode, setLifecycleDetailTruncateMode] = useState<'short' | 'long'>(
+    'short'
+  );
   const [lifecycleExpandedEventIds, setLifecycleExpandedEventIds] = useState<
     Record<string, boolean>
   >({});
@@ -377,6 +380,16 @@ export default function SceneEditorPage() {
       setCatalogIncludeInactive(true);
     }
 
+    const category = params.get('catalogCategory');
+    if (category && category.trim()) {
+      setCatalogCategory(category);
+    }
+
+    const query = params.get('catalogQuery');
+    if (query) {
+      setCatalogQuery(query);
+    }
+
     catalogFilterSyncReadyRef.current = true;
   }, []);
 
@@ -415,10 +428,23 @@ export default function SceneEditorPage() {
       params.delete('catalogIncludeInactive');
     }
 
+    if (catalogCategory === 'all') {
+      params.delete('catalogCategory');
+    } else {
+      params.set('catalogCategory', catalogCategory);
+    }
+
+    const normalizedCatalogQuery = catalogQuery.trim();
+    if (normalizedCatalogQuery) {
+      params.set('catalogQuery', normalizedCatalogQuery);
+    } else {
+      params.delete('catalogQuery');
+    }
+
     const nextQuery = params.toString();
     const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ''}${window.location.hash}`;
     window.history.replaceState(null, '', nextUrl);
-  }, [lifecycleActionFilter, catalogSourceFilter, catalogIncludeInactive]);
+  }, [lifecycleActionFilter, catalogSourceFilter, catalogIncludeInactive, catalogCategory, catalogQuery]);
 
   async function readErrorMessage(response: Response) {
     const payload = await readErrorPayload(response);
@@ -794,6 +820,27 @@ export default function SceneEditorPage() {
     return `${value.slice(0, maxLength)}...`;
   }
 
+  function summarizeLifecycleUnresolved(events: ObjectDefinitionLifecycleEvent[]) {
+    let unresolvedCount = 0;
+    let eventsWithUnresolved = 0;
+
+    for (const event of events) {
+      const unresolvedInEvent = getLifecycleDetailEntries(event.details).filter(
+        (entry) => entry.unresolvedRef
+      ).length;
+
+      unresolvedCount += unresolvedInEvent;
+      if (unresolvedInEvent > 0) {
+        eventsWithUnresolved += 1;
+      }
+    }
+
+    return {
+      unresolvedCount,
+      eventsWithUnresolved
+    };
+  }
+
   function isUnresolvedLifecycleReference(key: string, value: unknown) {
     return (
       isObjectDefinitionRefKey(key) &&
@@ -957,6 +1004,7 @@ export default function SceneEditorPage() {
   function exportLifecycleEventsCsv() {
     const sourceEvents =
       lifecycleCsvExportScope === 'all' ? lifecycleEvents : filteredLifecycleEvents;
+    const sourceUnresolvedSummary = summarizeLifecycleUnresolved(sourceEvents);
 
     const rows = sourceEvents.map((event) => {
       const unresolvedRefCount = getLifecycleDetailEntries(event.details).filter(
@@ -997,7 +1045,7 @@ export default function SceneEditorPage() {
       `# catalogSourceFilter=${catalogSourceFilter}`,
       `# catalogIncludeInactive=${catalogIncludeInactive ? 'true' : 'false'}`,
       `# totalEvents=${sourceEvents.length}`,
-      `# unresolvedRefs=${lifecycleUnresolvedSummary.unresolvedCount}`
+      `# unresolvedRefs=${sourceUnresolvedSummary.unresolvedCount}`
     ];
 
     const csv = [...metadata, header.join(','), ...rows.map((row) => row.join(','))].join('\n');
@@ -1247,25 +1295,10 @@ export default function SceneEditorPage() {
   }, [lifecycleActionCounts]);
 
   const lifecycleUnresolvedSummary = useMemo(() => {
-    let unresolvedCount = 0;
-    let eventsWithUnresolved = 0;
-
-    for (const event of filteredLifecycleEvents) {
-      const unresolvedInEvent = getLifecycleDetailEntries(event.details).filter(
-        (entry) => entry.unresolvedRef
-      ).length;
-
-      unresolvedCount += unresolvedInEvent;
-      if (unresolvedInEvent > 0) {
-        eventsWithUnresolved += 1;
-      }
-    }
-
-    return {
-      unresolvedCount,
-      eventsWithUnresolved
-    };
+    return summarizeLifecycleUnresolved(filteredLifecycleEvents);
   }, [filteredLifecycleEvents]);
+
+  const lifecycleDetailMaxLength = lifecycleDetailTruncateMode === 'short' ? 90 : 180;
 
   function buildLifecycleSummaryText() {
     const lines = [
@@ -3165,6 +3198,18 @@ export default function SceneEditorPage() {
                           >
                             CSV 범위: {lifecycleCsvExportScope === 'filtered' ? '필터' : '전체'}
                           </button>
+                          <button
+                            className="btn btn-outline-secondary btn-sm"
+                            type="button"
+                            onClick={() =>
+                              setLifecycleDetailTruncateMode((prev) =>
+                                prev === 'short' ? 'long' : 'short'
+                              )
+                            }
+                            title="이력 상세 텍스트 축약 길이 전환"
+                          >
+                            상세 길이: {lifecycleDetailTruncateMode === 'short' ? '짧게' : '길게'}
+                          </button>
                         </div>
                       </div>
                       {lifecycleUnresolvedSummary.unresolvedCount > 0 ? (
@@ -3309,7 +3354,10 @@ export default function SceneEditorPage() {
                                       <p className="subtle" style={{ margin: 0 }}>
                                         {formatLifecycleDetailKey(entry.key)}:{' '}
                                         <span title={entry.value}>
-                                          {truncateLifecycleDetailValue(entry.value)}
+                                          {truncateLifecycleDetailValue(
+                                            entry.value,
+                                            lifecycleDetailMaxLength
+                                          )}
                                         </span>
                                       </p>
                                       {entry.unresolvedRef ? (
