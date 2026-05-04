@@ -13,6 +13,7 @@ import {
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtPayload } from '../auth/jwt-payload.type';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { AiGenerationsService } from '../ai/ai-generations.service';
 import { CreateObjectDefinitionDto } from './dto/create-object-definition.dto';
 import { UpdateObjectDefinitionDto } from './dto/update-object-definition.dto';
 import { ObjectDefinitionsService } from './object-definitions.service';
@@ -26,8 +27,18 @@ type AuthenticatedRequest = {
 @Controller('object-definitions')
 export class ObjectDefinitionsController {
   constructor(
-    private readonly objectDefinitionsService: ObjectDefinitionsService
+    private readonly objectDefinitionsService: ObjectDefinitionsService,
+    private readonly aiGenerationsService: AiGenerationsService
   ) {}
+
+  @Post('from-generation/:generationId')
+  @ApiOperation({ summary: 'AI 생성 결과를 object definition으로 등록(alias)' })
+  promoteFromGeneration(
+    @Req() req: AuthenticatedRequest,
+    @Param('generationId') generationId: string
+  ) {
+    return this.aiGenerationsService.promoteToObjectDefinition(req.user.sub, generationId);
+  }
 
   @Post()
   @ApiOperation({ summary: '오브젝트 정의 생성' })

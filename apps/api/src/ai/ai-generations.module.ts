@@ -10,6 +10,7 @@ import { AiGenerationsService } from './ai-generations.service';
 @Module({
   imports: [AuthModule, PrismaModule, AssetsModule],
   controllers: [AiGenerationsController],
-  providers: [AiGenerationsService, AiGenerationWorker, AiProviderClient]
+  providers: [AiGenerationsService, AiGenerationWorker, AiProviderClient],
+  exports: [AiGenerationsService]
 })
 export class AiGenerationsModule {}
