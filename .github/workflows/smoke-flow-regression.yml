@@ -50,6 +50,10 @@ jobs:
       - name: Run smoke flow
         run: pnpm smoke:flow
 
+      - name: Summarize smoke flow output
+        if: always()
+        run: pnpm smoke:flow:report
+
       - name: Upload smoke flow outputs
         if: always()
         uses: actions/upload-artifact@v4
