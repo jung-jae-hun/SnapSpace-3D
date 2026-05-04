@@ -589,6 +589,45 @@ export default function SceneEditorPage() {
     return action;
   }
 
+  function getLifecycleActionTone(action: string) {
+    if (action === 'activate') {
+      return { fg: '#0a8f6a', bg: 'rgba(10, 143, 106, 0.15)' };
+    }
+    if (action === 'deactivate') {
+      return { fg: '#8a5a00', bg: 'rgba(138, 90, 0, 0.15)' };
+    }
+    if (action === 'new_version') {
+      return { fg: '#1f4f8f', bg: 'rgba(31, 79, 143, 0.14)' };
+    }
+    return { fg: '#3a4a5a', bg: 'rgba(58, 74, 90, 0.12)' };
+  }
+
+  function formatLifecycleDetailValue(value: unknown) {
+    if (value === null || value === undefined) {
+      return '-';
+    }
+
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+      return String(value);
+    }
+
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return '[unserializable]';
+    }
+  }
+
+  function getLifecycleDetailEntries(details?: Record<string, unknown> | null) {
+    if (!details || typeof details !== 'object') {
+      return [] as Array<{ key: string; value: string }>;
+    }
+
+    return Object.entries(details)
+      .map(([key, value]) => ({ key, value: formatLifecycleDetailValue(value) }))
+      .slice(0, 6);
+  }
+
   function clonePlacements(items: PlacedObject[]) {
     return items.map((item) => ({
       ...item,
@@ -2659,16 +2698,56 @@ export default function SceneEditorPage() {
                       ) : lifecycleEvents.length === 0 ? (
                         <p className="subtle" style={{ margin: 0 }}>이력이 없습니다.</p>
                       ) : (
-                        lifecycleEvents.map((event) => (
-                          <div key={event.id} style={{ display: 'grid', gap: 2 }}>
-                            <p className="subtle" style={{ margin: 0 }}>
-                              {new Date(event.createdAt).toLocaleString('ko-KR')} · {formatLifecycleAction(event.action)}
-                            </p>
-                            <p className="subtle" style={{ margin: 0 }}>
-                              actor: {event.actorUserId}
-                            </p>
-                          </div>
-                        ))
+                        lifecycleEvents.map((event) => {
+                          const tone = getLifecycleActionTone(event.action);
+                          const detailEntries = getLifecycleDetailEntries(event.details);
+
+                          return (
+                            <div
+                              key={event.id}
+                              style={{
+                                display: 'grid',
+                                gap: 6,
+                                border: '1px solid #d8e1e8',
+                                borderRadius: 8,
+                                padding: '8px 10px'
+                              }}
+                            >
+                              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
+                                <span
+                                  style={{
+                                    display: 'inline-block',
+                                    padding: '2px 8px',
+                                    borderRadius: 999,
+                                    fontSize: 12,
+                                    fontWeight: 600,
+                                    color: tone.fg,
+                                    background: tone.bg
+                                  }}
+                                >
+                                  {formatLifecycleAction(event.action)}
+                                </span>
+                                <span className="subtle" style={{ margin: 0, fontSize: 12 }}>
+                                  {new Date(event.createdAt).toLocaleString('ko-KR')}
+                                </span>
+                              </div>
+
+                              <p className="subtle" style={{ margin: 0 }}>
+                                actor: {event.actorUserId}
+                              </p>
+
+                              {detailEntries.length > 0 ? (
+                                <div style={{ display: 'grid', gap: 2 }}>
+                                  {detailEntries.map((entry) => (
+                                    <p key={`${event.id}-${entry.key}`} className="subtle" style={{ margin: 0 }}>
+                                      {entry.key}: {entry.value}
+                                    </p>
+                                  ))}
+                                </div>
+                              ) : null}
+                            </div>
+                          );
+                        })
                       )}
                     </div>
                   </div>
