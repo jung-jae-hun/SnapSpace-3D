@@ -624,6 +624,28 @@ export default function SceneEditorPage() {
     return action;
   }
 
+  function formatRelativeTime(timestamp: string) {
+    const target = new Date(timestamp).getTime();
+    if (!Number.isFinite(target)) {
+      return '시간 정보 없음';
+    }
+
+    const diffMs = target - Date.now();
+    const absMs = Math.abs(diffMs);
+    const rtf = new Intl.RelativeTimeFormat('ko-KR', { numeric: 'auto' });
+
+    if (absMs < 60 * 1000) {
+      return rtf.format(Math.round(diffMs / 1000), 'second');
+    }
+    if (absMs < 60 * 60 * 1000) {
+      return rtf.format(Math.round(diffMs / (60 * 1000)), 'minute');
+    }
+    if (absMs < 24 * 60 * 60 * 1000) {
+      return rtf.format(Math.round(diffMs / (60 * 60 * 1000)), 'hour');
+    }
+    return rtf.format(Math.round(diffMs / (24 * 60 * 60 * 1000)), 'day');
+  }
+
   function getLifecycleActionTone(action: string) {
     if (action === 'activate') {
       return { fg: '#0a8f6a', bg: 'rgba(10, 143, 106, 0.15)' };
@@ -1024,6 +1046,53 @@ export default function SceneEditorPage() {
 
     return lifecycleEvents.filter((event) => event.action === lifecycleActionFilter);
   }, [lifecycleEvents, lifecycleActionFilter]);
+
+  const lifecycleActionCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const event of filteredLifecycleEvents) {
+      counts.set(event.action, (counts.get(event.action) ?? 0) + 1);
+    }
+    return counts;
+  }, [filteredLifecycleEvents]);
+
+  const lifecycleUnresolvedSummary = useMemo(() => {
+    let unresolvedCount = 0;
+    let eventsWithUnresolved = 0;
+
+    for (const event of filteredLifecycleEvents) {
+      const unresolvedInEvent = getLifecycleDetailEntries(event.details).filter(
+        (entry) => entry.unresolvedRef
+      ).length;
+
+      unresolvedCount += unresolvedInEvent;
+      if (unresolvedInEvent > 0) {
+        eventsWithUnresolved += 1;
+      }
+    }
+
+    return {
+      unresolvedCount,
+      eventsWithUnresolved
+    };
+  }, [filteredLifecycleEvents]);
+
+  function buildLifecycleSummaryText() {
+    const lines = [
+      `라이프사이클 이력 요약 (${lifecycleEventsTargetName ?? lifecycleEventsTargetId ?? 'n/a'})`,
+      `- 필터: ${lifecycleActionFilter}`,
+      `- 이벤트 수: ${filteredLifecycleEvents.length}`,
+      `- 미해결 참조: ${lifecycleUnresolvedSummary.unresolvedCount}건 (이벤트 ${lifecycleUnresolvedSummary.eventsWithUnresolved}개)`
+    ];
+
+    if (lifecycleActionCounts.size > 0) {
+      lines.push('- 액션 분포:');
+      for (const [action, count] of lifecycleActionCounts.entries()) {
+        lines.push(`  - ${formatLifecycleAction(action)}: ${count}`);
+      }
+    }
+
+    return lines.join('\n');
+  }
 
   function focusLatestErrorLog() {
     setSidebarTab('catalog');
@@ -2868,8 +2937,36 @@ export default function SceneEditorPage() {
                           >
                             필터 JSON 복사
                           </button>
+                          <button
+                            className="btn btn-outline-secondary btn-sm"
+                            type="button"
+                            onClick={() =>
+                              void copyTextToClipboard(
+                                buildLifecycleSummaryText(),
+                                '라이프사이클 요약'
+                              )
+                            }
+                            disabled={filteredLifecycleEvents.length === 0}
+                          >
+                            요약 복사
+                          </button>
                         </div>
                       </div>
+                      {lifecycleUnresolvedSummary.unresolvedCount > 0 ? (
+                        <div
+                          style={{
+                            border: '1px solid #f0c36d',
+                            background: 'rgba(240, 195, 109, 0.18)',
+                            borderRadius: 8,
+                            padding: '8px 10px'
+                          }}
+                        >
+                          <p className="subtle" style={{ margin: 0, color: '#8a5a00' }}>
+                            미해결 참조 {lifecycleUnresolvedSummary.unresolvedCount}건
+                            (이벤트 {lifecycleUnresolvedSummary.eventsWithUnresolved}개)
+                          </p>
+                        </div>
+                      ) : null}
                       {lifecycleEventsLoading ? (
                         <p className="subtle" style={{ margin: 0 }}>이력 조회 중...</p>
                       ) : filteredLifecycleEvents.length === 0 ? (
@@ -2911,6 +3008,9 @@ export default function SceneEditorPage() {
                                   </span>
                                   <span className="subtle" style={{ margin: 0, fontSize: 12 }}>
                                     {new Date(event.createdAt).toLocaleString('ko-KR')}
+                                  </span>
+                                  <span className="subtle" style={{ margin: 0, fontSize: 12 }}>
+                                    ({formatRelativeTime(event.createdAt)})
                                   </span>
                                 </div>
                                 <button
