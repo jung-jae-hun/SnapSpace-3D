@@ -1,0 +1,9 @@
+# Default owner for all files.
+* @jung-jae-hun
+
+# Domain owners (adjust if maintainers change).
+/apps/api/ @jung-jae-hun
+/apps/web/ @jung-jae-hun
+/apps/worker/ @jung-jae-hun
+/infra/ @jung-jae-hun
+/scripts/ @jung-jae-hun
