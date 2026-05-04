@@ -172,6 +172,9 @@ export default function SceneEditorPage() {
   const [lifecycleActionFilter, setLifecycleActionFilter] = useState<
     'all' | 'activate' | 'deactivate' | 'new_version'
   >('all');
+  const [lifecycleExpandedEventIds, setLifecycleExpandedEventIds] = useState<
+    Record<string, boolean>
+  >({});
   const [density, setDensity] = useState<'cozy' | 'compact'>('cozy');
   const [activeSection, setActiveSection] = useState<ActiveSection>('layout-2d');
   const [snapToGrid, setSnapToGrid] = useState(true);
@@ -546,6 +549,7 @@ export default function SceneEditorPage() {
     setLifecycleEventsTargetId(definitionId);
     setLifecycleEventsTargetName(definitionName);
     setLifecycleEventsLoading(true);
+    setLifecycleExpandedEventIds({});
 
     let response: Response;
     try {
@@ -646,14 +650,34 @@ export default function SceneEditorPage() {
     }
   }
 
+  function isUnresolvedLifecycleReference(key: string, value: unknown) {
+    return (
+      isObjectDefinitionRefKey(key) &&
+      typeof value === 'string' &&
+      value.trim().length > 0 &&
+      !catalogById.has(value)
+    );
+  }
+
   function getLifecycleDetailEntries(details?: Record<string, unknown> | null) {
     if (!details || typeof details !== 'object') {
-      return [] as Array<{ key: string; value: string }>;
+      return [] as Array<{ key: string; value: string; unresolvedRef: boolean }>;
     }
 
     return Object.entries(details)
-      .map(([key, value]) => ({ key, value: formatLifecycleDetailValue(key, value) }))
+      .map(([key, value]) => ({
+        key,
+        value: formatLifecycleDetailValue(key, value),
+        unresolvedRef: isUnresolvedLifecycleReference(key, value)
+      }))
       .slice(0, 6);
+  }
+
+  function toggleLifecycleEventJson(eventId: string) {
+    setLifecycleExpandedEventIds((prev) => ({
+      ...prev,
+      [eventId]: !prev[eventId]
+    }));
   }
 
   function clonePlacements(items: PlacedObject[]) {
@@ -2755,6 +2779,10 @@ export default function SceneEditorPage() {
                         filteredLifecycleEvents.map((event) => {
                           const tone = getLifecycleActionTone(event.action);
                           const detailEntries = getLifecycleDetailEntries(event.details);
+                          const unresolvedRefCount = detailEntries.filter(
+                            (entry) => entry.unresolvedRef
+                          ).length;
+                          const expanded = lifecycleExpandedEventIds[event.id] === true;
 
                           return (
                             <div
@@ -2798,20 +2826,70 @@ export default function SceneEditorPage() {
                                 >
                                   JSON 복사
                                 </button>
+                                <button
+                                  className="btn btn-outline-secondary btn-sm"
+                                  type="button"
+                                  onClick={() => toggleLifecycleEventJson(event.id)}
+                                >
+                                  {expanded ? 'JSON 접기' : 'JSON 보기'}
+                                </button>
                               </div>
 
                               <p className="subtle" style={{ margin: 0 }}>
                                 actor: {event.actorUserId}
                               </p>
 
+                              {unresolvedRefCount > 0 ? (
+                                <p className="subtle" style={{ margin: 0, color: '#8a5a00' }}>
+                                  미해결 참조 {unresolvedRefCount}건
+                                </p>
+                              ) : null}
+
                               {detailEntries.length > 0 ? (
                                 <div style={{ display: 'grid', gap: 2 }}>
                                   {detailEntries.map((entry) => (
-                                    <p key={`${event.id}-${entry.key}`} className="subtle" style={{ margin: 0 }}>
-                                      {formatLifecycleDetailKey(entry.key)}: {entry.value}
-                                    </p>
+                                    <div
+                                      key={`${event.id}-${entry.key}`}
+                                      style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}
+                                    >
+                                      <p className="subtle" style={{ margin: 0 }}>
+                                        {formatLifecycleDetailKey(entry.key)}: {entry.value}
+                                      </p>
+                                      {entry.unresolvedRef ? (
+                                        <span
+                                          style={{
+                                            display: 'inline-block',
+                                            fontSize: 11,
+                                            fontWeight: 600,
+                                            borderRadius: 999,
+                                            padding: '1px 6px',
+                                            color: '#8a5a00',
+                                            background: 'rgba(138, 90, 0, 0.15)'
+                                          }}
+                                        >
+                                          미해결
+                                        </span>
+                                      ) : null}
+                                    </div>
                                   ))}
                                 </div>
+                              ) : null}
+
+                              {expanded ? (
+                                <pre
+                                  style={{
+                                    margin: 0,
+                                    fontSize: 12,
+                                    lineHeight: 1.5,
+                                    background: '#f5f7fa',
+                                    border: '1px solid #d8e1e8',
+                                    borderRadius: 6,
+                                    padding: 8,
+                                    overflowX: 'auto'
+                                  }}
+                                >
+                                  {JSON.stringify(event.details ?? {}, null, 2)}
+                                </pre>
                               ) : null}
                             </div>
                           );
