@@ -124,6 +124,7 @@ jobs:
             const severityHigh = 'severity:high';
             const severityMedium = 'severity:medium';
             const severityLow = 'severity:low';
+            const escalationLabel = 'escalation:consecutive-failure';
             const areaLabel = 'area:ci';
             const title = '[CI] lifecycle-smoke scheduled run failed';
 
@@ -131,6 +132,7 @@ jobs:
             let failedStep;
             let failedStepName = 'unknown';
             let severityReason = 'default';
+            let consecutiveFailureCount = 1;
 
             try {
               const jobs = await github.rest.actions.listJobsForWorkflowRun({
@@ -160,6 +162,43 @@ jobs:
               severityReason = `step_failed:${failedStepName}`;
             }
 
+            try {
+              const recentRuns = await github.rest.actions.listWorkflowRunsForRepo({
+                owner,
+                repo,
+                event: 'schedule',
+                status: 'completed',
+                per_page: 20,
+                branch: context.ref.replace('refs/heads/', '')
+              });
+
+              const orderedLifecycleRuns = recentRuns.data.workflow_runs
+                .filter((run) => run.name === 'lifecycle-smoke')
+                .filter((run) => run.id !== context.runId)
+                .sort((a, b) => {
+                  const aTs = Date.parse(a.created_at ?? '');
+                  const bTs = Date.parse(b.created_at ?? '');
+                  return Number.isFinite(bTs) && Number.isFinite(aTs) ? bTs - aTs : 0;
+                });
+
+              for (const run of orderedLifecycleRuns) {
+                if (run.conclusion === 'failure') {
+                  consecutiveFailureCount += 1;
+                  continue;
+                }
+                break;
+              }
+            } catch (error) {
+              const message = error instanceof Error ? error.message : String(error);
+              core.warning(`Unable to inspect consecutive failure count: ${message}`);
+            }
+
+            const escalatedByConsecutiveFailure = consecutiveFailureCount >= 2;
+            if (escalatedByConsecutiveFailure) {
+              severityLabel = severityHigh;
+              severityReason = `consecutive_failures:${consecutiveFailureCount}`;
+            }
+
             // Ensure labels exist.
             for (const label of [
               {
@@ -186,6 +225,11 @@ jobs:
                 name: areaLabel,
                 color: '0e8a16',
                 description: 'Continuous integration area'
+              },
+              {
+                name: escalationLabel,
+                color: '5319e7',
+                description: 'Escalated due to consecutive scheduled failures'
               }
             ]) {
               try {
@@ -243,6 +287,7 @@ jobs:
               `- Failed step: ${failedStepName}`,
               `- Severity: ${severityLabel}`,
               `- Severity reason: ${severityReason}`,
+              `- Consecutive failures: ${consecutiveFailureCount}`,
               '',
               '### 빠른 재현 명령',
               '- `pnpm dev:docker:verify`',
@@ -271,12 +316,17 @@ jobs:
             });
 
             const existing = openIssues.data.find((issue) => issue.title === title);
+            const nextLabels = [labelName, severityLabel, areaLabel];
+            if (escalatedByConsecutiveFailure) {
+              nextLabels.push(escalationLabel);
+            }
+
             if (existing) {
               await github.rest.issues.update({
                 owner,
                 repo,
                 issue_number: existing.number,
-                labels: [labelName, severityLabel, areaLabel]
+                labels: nextLabels
               });
 
               await github.rest.issues.createComment({
@@ -294,7 +344,7 @@ jobs:
               repo,
               title,
               body,
-              labels: [labelName, severityLabel, areaLabel]
+              labels: nextLabels
             });
 
             core.info(`Created alert issue #${created.data.number}`);
@@ -345,7 +395,8 @@ jobs:
               owner,
               repo,
               issue_number: existing.number,
-              state: 'closed'
+              state: 'closed',
+              labels: ['lifecycle-smoke-alert', 'area:ci', 'severity:low']
             });
 
             core.info(`Closed alert issue #${existing.number} after recovery.`);
