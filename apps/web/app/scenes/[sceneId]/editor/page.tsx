@@ -175,6 +175,7 @@ export default function SceneEditorPage() {
   const [lifecycleExpandedEventIds, setLifecycleExpandedEventIds] = useState<
     Record<string, boolean>
   >({});
+  const [catalogHighlightedId, setCatalogHighlightedId] = useState<string | null>(null);
   const [density, setDensity] = useState<'cozy' | 'compact'>('cozy');
   const [activeSection, setActiveSection] = useState<ActiveSection>('layout-2d');
   const [snapToGrid, setSnapToGrid] = useState(true);
@@ -669,7 +670,22 @@ export default function SceneEditorPage() {
       }>;
     }
 
+    const priority: Record<string, number> = {
+      reason: 0,
+      version: 1,
+      fromObjectDefinitionId: 2,
+      newObjectDefinitionId: 3
+    };
+
     return Object.entries(details)
+      .sort(([a], [b]) => {
+        const pa = priority[a] ?? 50;
+        const pb = priority[b] ?? 50;
+        if (pa !== pb) {
+          return pa - pb;
+        }
+        return a.localeCompare(b);
+      })
       .map(([key, value]) => ({
         key,
         value: formatLifecycleDetailValue(key, value),
@@ -697,6 +713,7 @@ export default function SceneEditorPage() {
     setCatalogSourceFilter('all');
     setCatalogIncludeInactive(true);
     setCatalogLatestByFamilyOnly(false);
+    setCatalogHighlightedId(objectDefinitionId);
 
     if (resolved) {
       setCatalogQuery(`${resolved.name} ${resolved.code}`);
@@ -707,6 +724,11 @@ export default function SceneEditorPage() {
     }
 
     void fetchCatalogOnly({ includeInactive: true, source: 'all', silent: true });
+
+    window.setTimeout(() => {
+      const target = document.getElementById(`catalog-item-${objectDefinitionId}`);
+      target?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }, 80);
   }
 
   function clonePlacements(items: PlacedObject[]) {
@@ -2706,9 +2728,15 @@ export default function SceneEditorPage() {
                   displayedCatalog.map((def) => (
                     <div
                       key={def.id}
+                      id={`catalog-item-${def.id}`}
                       className="list-row"
                       style={
-                        def.id === recentAiObjectId
+                        def.id === catalogHighlightedId
+                          ? {
+                              borderColor: '#1f4f8f',
+                              background: 'rgba(31, 79, 143, 0.12)'
+                            }
+                          : def.id === recentAiObjectId
                           ? {
                               borderColor: '#0a8f6a',
                               background: 'rgba(10, 143, 106, 0.08)'
@@ -2783,22 +2811,37 @@ export default function SceneEditorPage() {
                         <strong style={{ fontSize: 13 }}>
                           라이프사이클 이력: {lifecycleEventsTargetName ?? lifecycleEventsTargetId}
                         </strong>
-                        <select
-                          className="form-select form-select-sm"
-                          value={lifecycleActionFilter}
-                          aria-label="라이프사이클 액션 필터"
-                          onChange={(e) =>
-                            setLifecycleActionFilter(
-                              e.target.value as 'all' | 'activate' | 'deactivate' | 'new_version'
-                            )
-                          }
-                          style={{ maxWidth: 180 }}
-                        >
-                          <option value="all">전체 액션</option>
-                          <option value="activate">활성화</option>
-                          <option value="deactivate">비활성화</option>
-                          <option value="new_version">신규 버전</option>
-                        </select>
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                          <select
+                            className="form-select form-select-sm"
+                            value={lifecycleActionFilter}
+                            aria-label="라이프사이클 액션 필터"
+                            onChange={(e) =>
+                              setLifecycleActionFilter(
+                                e.target.value as 'all' | 'activate' | 'deactivate' | 'new_version'
+                              )
+                            }
+                            style={{ maxWidth: 180 }}
+                          >
+                            <option value="all">전체 액션</option>
+                            <option value="activate">활성화</option>
+                            <option value="deactivate">비활성화</option>
+                            <option value="new_version">신규 버전</option>
+                          </select>
+                          <button
+                            className="btn btn-outline-secondary btn-sm"
+                            type="button"
+                            onClick={() =>
+                              void copyTextToClipboard(
+                                JSON.stringify(filteredLifecycleEvents, null, 2),
+                                '라이프사이클 필터 결과 JSON'
+                              )
+                            }
+                            disabled={filteredLifecycleEvents.length === 0}
+                          >
+                            필터 JSON 복사
+                          </button>
+                        </div>
                       </div>
                       {lifecycleEventsLoading ? (
                         <p className="subtle" style={{ margin: 0 }}>이력 조회 중...</p>
