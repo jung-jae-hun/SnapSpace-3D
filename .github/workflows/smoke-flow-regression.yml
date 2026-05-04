@@ -1,0 +1,63 @@
+name: smoke-flow-regression
+
+permissions:
+  contents: read
+
+on:
+  workflow_dispatch:
+    inputs:
+      runRuntimeVerify:
+        description: "Run runtime verify before smoke flow"
+        required: false
+        default: true
+        type: boolean
+  schedule:
+    - cron: "10 3 * * 1"
+
+jobs:
+  smoke_flow:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    concurrency:
+      group: smoke-flow-regression-${{ github.ref }}
+      cancel-in-progress: false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.11.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Start docker dev runtime
+        run: pnpm dev:docker:restart
+
+      - name: Verify runtime
+        if: ${{ github.event_name == 'schedule' || inputs.runRuntimeVerify }}
+        run: pnpm dev:docker:verify
+
+      - name: Run smoke flow
+        run: pnpm smoke:flow
+
+      - name: Upload smoke flow outputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-flow-output
+          path: .tmp/smoke/*
+          if-no-files-found: warn
+
+      - name: Tear down docker dev runtime
+        if: always()
+        run: pnpm dev:docker:down
