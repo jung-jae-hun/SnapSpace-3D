@@ -616,12 +616,26 @@ export default function SceneEditorPage() {
     return labels[key] ?? key;
   }
 
-  function formatLifecycleDetailValue(value: unknown) {
+  function isObjectDefinitionRefKey(key: string) {
+    return (
+      key === 'fromObjectDefinitionId' ||
+      key === 'newObjectDefinitionId' ||
+      key.endsWith('ObjectDefinitionId')
+    );
+  }
+
+  function formatLifecycleDetailValue(key: string, value: unknown) {
     if (value === null || value === undefined) {
       return '-';
     }
 
     if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+      if (typeof value === 'string' && isObjectDefinitionRefKey(key)) {
+        const matched = catalogById.get(value);
+        if (matched) {
+          return `${value} (${matched.name} / ${matched.code})`;
+        }
+      }
       return String(value);
     }
 
@@ -638,7 +652,7 @@ export default function SceneEditorPage() {
     }
 
     return Object.entries(details)
-      .map(([key, value]) => ({ key, value: formatLifecycleDetailValue(value) }))
+      .map(([key, value]) => ({ key, value: formatLifecycleDetailValue(key, value) }))
       .slice(0, 6);
   }
 
