@@ -203,11 +203,38 @@ jobs:
 
             const workflowUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
             const artifactHintUrl = `${workflowUrl}#artifacts`;
+            let previousSuccessUrl = 'n/a';
+            try {
+              const recentRuns = await github.rest.actions.listWorkflowRunsForRepo({
+                owner,
+                repo,
+                event: 'schedule',
+                status: 'completed',
+                per_page: 30,
+                branch: context.ref.replace('refs/heads/', '')
+              });
+
+              const prevSuccess = recentRuns.data.workflow_runs.find(
+                (run) =>
+                  run.id !== context.runId &&
+                  run.name === 'lifecycle-smoke' &&
+                  run.conclusion === 'success'
+              );
+
+              if (prevSuccess?.html_url) {
+                previousSuccessUrl = prevSuccess.html_url;
+              }
+            } catch (error) {
+              const message = error instanceof Error ? error.message : String(error);
+              core.warning(`Unable to inspect previous successful run: ${message}`);
+            }
+
             const body = [
               '자동 야간 lifecycle-smoke 실행이 실패했습니다.',
               '',
               '### 실행 정보',
               `- Workflow run: ${workflowUrl}`,
+              `- Previous successful run: ${previousSuccessUrl}`,
               `- Artifacts: ${artifactHintUrl}`,
               `- Ref: ${context.ref}`,
               `- SHA: ${context.sha}`,
@@ -216,6 +243,10 @@ jobs:
               `- Failed step: ${failedStepName}`,
               `- Severity: ${severityLabel}`,
               `- Severity reason: ${severityReason}`,
+              '',
+              '### 빠른 재현 명령',
+              '- `pnpm dev:docker:verify`',
+              '- `pnpm smoke:lifecycle`',
               '',
               '### 확인 체크리스트',
               '- [ ] 실패 단계(step)와 에러 로그를 확인했다.',

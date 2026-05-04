@@ -102,6 +102,18 @@ bash /Volumes/MartinData/dev-project/querensys/SnapSpace 3D/scripts/verify-runti
   --name "Snap Owner"
 ```
 
+런타임 트러블슈팅(우선 순위):
+
+- `pnpm dev:docker:verify`에서 `/api/auth/me`가 500으로 떨어지면, 코드 결함보다 Next.js Turbopack dev cache 손상 가능성을 먼저 의심합니다.
+- 아래 순서로 복구 후 재검증합니다.
+
+```bash
+cd /Volumes/MartinData/dev-project/querensys/SnapSpace 3D
+pnpm dev:docker:restart
+pnpm dev:docker:verify
+pnpm smoke:lifecycle
+```
+
 ## AI Provider 실환경 튜닝
 
 AI 생성 provider를 실제 키로 검증할 때는 아래 순서로 진행하세요.
