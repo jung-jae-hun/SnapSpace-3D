@@ -2,8 +2,12 @@
 
 이 폴더는 SnapSpace 3D Docker 실행 기준 폴더입니다.
 
-- 기본 경로: 레포 루트(/Volumes/MartinData/dev-project/querensys/SnapSpace 3D)
+- 기본 경로: 레포 루트(현재 클론된 SnapSpace 3D 경로)
 - 이 폴더의 .env를 기준으로 Docker 실행
+
+GitHub 신규 저장소 초기 설정 체크리스트는 아래 문서를 참고하세요.
+
+- Doc/github-initial-setup-checklist.md
 
 ## 안정성 운영 규칙 (기능 동결)
 
