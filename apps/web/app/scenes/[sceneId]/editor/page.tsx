@@ -169,6 +169,9 @@ export default function SceneEditorPage() {
   const [lifecycleEventsTargetName, setLifecycleEventsTargetName] = useState<string | null>(null);
   const [lifecycleEventsLoading, setLifecycleEventsLoading] = useState(false);
   const [lifecycleEvents, setLifecycleEvents] = useState<ObjectDefinitionLifecycleEvent[]>([]);
+  const [lifecycleActionFilter, setLifecycleActionFilter] = useState<
+    'all' | 'activate' | 'deactivate' | 'new_version'
+  >('all');
   const [density, setDensity] = useState<'cozy' | 'compact'>('cozy');
   const [activeSection, setActiveSection] = useState<ActiveSection>('layout-2d');
   const [snapToGrid, setSnapToGrid] = useState(true);
@@ -602,6 +605,17 @@ export default function SceneEditorPage() {
     return { fg: '#3a4a5a', bg: 'rgba(58, 74, 90, 0.12)' };
   }
 
+  function formatLifecycleDetailKey(key: string) {
+    const labels: Record<string, string> = {
+      fromObjectDefinitionId: '이전 오브젝트 ID',
+      newObjectDefinitionId: '신규 오브젝트 ID',
+      version: '버전',
+      reason: '사유'
+    };
+
+    return labels[key] ?? key;
+  }
+
   function formatLifecycleDetailValue(value: unknown) {
     if (value === null || value === undefined) {
       return '-';
@@ -886,6 +900,14 @@ export default function SceneEditorPage() {
     () => aiEventLog.find((entry) => entry.level === 'error') ?? null,
     [aiEventLog]
   );
+
+  const filteredLifecycleEvents = useMemo(() => {
+    if (lifecycleActionFilter === 'all') {
+      return lifecycleEvents;
+    }
+
+    return lifecycleEvents.filter((event) => event.action === lifecycleActionFilter);
+  }, [lifecycleEvents, lifecycleActionFilter]);
 
   function focusLatestErrorLog() {
     setSidebarTab('catalog');
@@ -2690,15 +2712,33 @@ export default function SceneEditorPage() {
                 {lifecycleEventsTargetId ? (
                   <div className="list-row" style={{ marginTop: 10 }}>
                     <div style={{ display: 'grid', gap: 6 }}>
-                      <strong style={{ fontSize: 13 }}>
-                        라이프사이클 이력: {lifecycleEventsTargetName ?? lifecycleEventsTargetId}
-                      </strong>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                        <strong style={{ fontSize: 13 }}>
+                          라이프사이클 이력: {lifecycleEventsTargetName ?? lifecycleEventsTargetId}
+                        </strong>
+                        <select
+                          className="form-select form-select-sm"
+                          value={lifecycleActionFilter}
+                          aria-label="라이프사이클 액션 필터"
+                          onChange={(e) =>
+                            setLifecycleActionFilter(
+                              e.target.value as 'all' | 'activate' | 'deactivate' | 'new_version'
+                            )
+                          }
+                          style={{ maxWidth: 180 }}
+                        >
+                          <option value="all">전체 액션</option>
+                          <option value="activate">활성화</option>
+                          <option value="deactivate">비활성화</option>
+                          <option value="new_version">신규 버전</option>
+                        </select>
+                      </div>
                       {lifecycleEventsLoading ? (
                         <p className="subtle" style={{ margin: 0 }}>이력 조회 중...</p>
-                      ) : lifecycleEvents.length === 0 ? (
+                      ) : filteredLifecycleEvents.length === 0 ? (
                         <p className="subtle" style={{ margin: 0 }}>이력이 없습니다.</p>
                       ) : (
-                        lifecycleEvents.map((event) => {
+                        filteredLifecycleEvents.map((event) => {
                           const tone = getLifecycleActionTone(event.action);
                           const detailEntries = getLifecycleDetailEntries(event.details);
 
@@ -2713,23 +2753,37 @@ export default function SceneEditorPage() {
                                 padding: '8px 10px'
                               }}
                             >
-                              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
-                                <span
-                                  style={{
-                                    display: 'inline-block',
-                                    padding: '2px 8px',
-                                    borderRadius: 999,
-                                    fontSize: 12,
-                                    fontWeight: 600,
-                                    color: tone.fg,
-                                    background: tone.bg
-                                  }}
+                              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                                <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                                  <span
+                                    style={{
+                                      display: 'inline-block',
+                                      padding: '2px 8px',
+                                      borderRadius: 999,
+                                      fontSize: 12,
+                                      fontWeight: 600,
+                                      color: tone.fg,
+                                      background: tone.bg
+                                    }}
+                                  >
+                                    {formatLifecycleAction(event.action)}
+                                  </span>
+                                  <span className="subtle" style={{ margin: 0, fontSize: 12 }}>
+                                    {new Date(event.createdAt).toLocaleString('ko-KR')}
+                                  </span>
+                                </div>
+                                <button
+                                  className="btn btn-outline-secondary btn-sm"
+                                  type="button"
+                                  onClick={() =>
+                                    void copyTextToClipboard(
+                                      JSON.stringify(event, null, 2),
+                                      '라이프사이클 이력 JSON'
+                                    )
+                                  }
                                 >
-                                  {formatLifecycleAction(event.action)}
-                                </span>
-                                <span className="subtle" style={{ margin: 0, fontSize: 12 }}>
-                                  {new Date(event.createdAt).toLocaleString('ko-KR')}
-                                </span>
+                                  JSON 복사
+                                </button>
                               </div>
 
                               <p className="subtle" style={{ margin: 0 }}>
@@ -2740,7 +2794,7 @@ export default function SceneEditorPage() {
                                 <div style={{ display: 'grid', gap: 2 }}>
                                   {detailEntries.map((entry) => (
                                     <p key={`${event.id}-${entry.key}`} className="subtle" style={{ margin: 0 }}>
-                                      {entry.key}: {entry.value}
+                                      {formatLifecycleDetailKey(entry.key)}: {entry.value}
                                     </p>
                                   ))}
                                 </div>
