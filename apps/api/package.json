@@ -19,12 +19,12 @@
     "prisma:studio": "prisma studio --schema prisma/schema.prisma"
   },
   "dependencies": {
-    "@nestjs/common": "^11.1.9",
+    "@nestjs/common": "^11.1.27",
     "@nestjs/core": "^11.1.9",
     "@nestjs/jwt": "^11.0.1",
     "@nestjs/platform-express": "^11.1.9",
     "@nestjs/swagger": "^11.2.0",
-    "@prisma/client": "^6.19.3",
+    "@prisma/client": "^7.8.0",
     "bullmq": "^5.76.1",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.15.1",
